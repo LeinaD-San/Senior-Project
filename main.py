@@ -164,6 +164,56 @@ async def places_search(q: str, lat: Optional[float] = None, lng: Optional[float
 
     return {"query": q, "count": len(results), "results": results}
 
+@app.get('/places/{places_id}')
+async def place_details(place_id:str):
+    api_key = os.getenv("GOOGLE_MAPS_API_KEY")
+
+    if not api_key:
+        raise HTTPException(status_code=500, detail='GOOGLE_MAPS_API_KEY not set')
+
+    url = 'https://maps.googleapis.com/maps/api/place/details/json'
+
+    params = {
+        'place_id':place_id,
+        'key': api_key
+    }
+
+    async with httpx.AsyncClient(timeout=15)as client:
+        r = await client.get(url, params=params)
+        r.raise_for_status()
+        data = r.json()
+
+    status = data.get('status')
+
+    if status != 'OK':
+        raise HTTPException(
+            status_code=502,
+            detail = {'google_status': status, 'error': data.get('error_message')}
+        )
+    place = data.get('result',{})
+
+    location = place.get('geometry', {}).get('location',{})
+
+    photos = []
+
+    for p in place.get('photos',[]):
+        ref = p.get('photo_reference')
+        if ref:
+            photos.append(
+                f"https://maps.googleapis.com/maps/api/place/photo?maxwidth=800&photo_reference={ref}&key={api_key}"
+            )
+    return {
+        "place_id": place.get("place_id"),
+        "name": place.get("name"),
+        "address": place.get("formatted_address"),
+        "rating": place.get("rating"),
+        "phone": place.get("formatted_phone_number"),
+        "website": place.get("website"),
+        "lat": location.get("lat"),
+        "lng": location.get("lng"),
+        "photos": photos
+    }
+
 #AI assistant
 @app.post("/ai/itinerary")
 async def ai_itinerary(body: ItineraryRequest):
