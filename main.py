@@ -45,6 +45,11 @@ class TripItemCreate(BaseModel):
     name: str
     notes: str = ""
 
+    lat: Optional[float] = None
+    lng: Optional[float] = None
+    address: Optional[str] = None
+    rating: Optional[float] = None
+
 class ItineraryRequest(BaseModel):
     destination: str
     days: int = Field(ge=1, le=14)
@@ -86,6 +91,10 @@ def add_trip_item(trip_id: int, payload: TripItemCreate, db: db_dependency):
         place_id=payload.place_id,
         name=payload.name,
         notes=payload.notes,
+        lat= payload.lat,
+        lng=payload.lng,
+        address =payload.address,
+        rating=payload.rating,
     )
     db.add(item)
     db.commit()
@@ -155,11 +164,15 @@ async def places_search(q: str, lat: Optional[float] = None, lng: Optional[float
 
     results = []
     for p in data.get("results", []):
+
+        location = p.get('geometry', {}).get('location',{})
         results.append({
             "place_id": p.get("place_id"),
             "name": p.get("name"),
             "address": p.get("formatted_address"),
             "rating": p.get("rating"),
+            'lat':location.get('lat'),
+            'lng':location.get('lng')
         })
 
     return {"query": q, "count": len(results), "results": results}

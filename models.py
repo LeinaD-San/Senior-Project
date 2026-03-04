@@ -1,4 +1,4 @@
-from sqlalchemy import Column, ForeignKey, Integer, String, Text
+from sqlalchemy import Column, ForeignKey, Integer, String, Text, Float
 from database import Base
 
 class Trip(Base):
@@ -18,4 +18,9 @@ class TripItem(Base):
     place_id = Column(String, nullable=False)
     name = Column(String, nullable=False)
     notes = Column(Text, default='')
+
+    lat = Column(Float, nullable=True)
+    lng = Column(Float,nullable=True)
+    address = Column(String, nullable=True)
+    rating = Column(Float, nullable=True)
     
