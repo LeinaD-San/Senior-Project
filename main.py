@@ -3,12 +3,21 @@ from pydantic import BaseModel, Field
 from typing import List, Annotated, Optional
 import os
 import httpx
-
 import models
 from database import engine, SessionLocal
 from sqlalchemy.orm import Session
+from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI(title="Travel Agent API")
+
+#so frontend can call API
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=['*'],#temp, replace later with frontend URL
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # creates tables
 @app.on_event("startup")
@@ -55,6 +64,16 @@ def create_trip(payload: TripCreate, db: db_dependency):
     db.refresh(trip)
     return {"id": trip.id, "title": trip.title, "destination": trip.destination}
 
+
+@app.get("/trips")
+def list_trips(db: db_dependency):
+    trips = db.query(models.Trip).all()
+    return [
+        {'id': t.id, 'title': t.title, 'destination': t.destination}
+        for t in trips
+    ]
+
+
 @app.post("/trips/{trip_id}/items")
 def add_trip_item(trip_id: int, payload: TripItemCreate, db: db_dependency):
     trip = db.get(models.Trip, trip_id)
@@ -73,6 +92,7 @@ def add_trip_item(trip_id: int, payload: TripItemCreate, db: db_dependency):
     db.refresh(item)
     return {"id": item.id, "trip_id": item.trip_id, "day": item.day, "place_id": item.place_id, "name": item.name}
 
+
 @app.get("/trips/{trip_id}")
 def get_trip(trip_id: int, db: db_dependency):
     trip = db.get(models.Trip, trip_id)
@@ -89,6 +109,26 @@ def get_trip(trip_id: int, db: db_dependency):
             for i in items
         ],
     }
+
+@app.delete('/trips/{trip_id}')
+def delete_trip(trip_id: int, db: db_dependency):
+    trip = db.get(models.Trip, trip_id)
+    if not trip:
+        raise HTTPException(status_code=404, detail = 'Trip not found')
+    db.delete(trip)
+    db.commit()
+    return {'status': 'deleted', 'trip_id':trip_id}
+
+@app.delete('/trips/{trip_id}/items/{item_id}')
+def delete_trip_item(trip_id: int, item_id: int, db: db_dependency):
+    item = db.get(models.TripItem, item_id)
+
+    if not item or item.trip_id != trip_id:
+        raise HTTPException(status_code=404, detail='Item not found')
+    
+    db.delete(item)
+    db.commit()
+    return{'status': 'deleted', 'item_id':item_id}
 
 #Google Maps
 @app.get("/places/search")
