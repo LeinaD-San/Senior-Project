@@ -7,6 +7,7 @@ import models
 from database import engine, SessionLocal
 from sqlalchemy.orm import Session
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy.exc import OperationalError
 
 app = FastAPI(title="Travel Agent API")
 
@@ -14,7 +15,7 @@ app = FastAPI(title="Travel Agent API")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=['*'],#temp, replace later with frontend URL
-    allow_credentials=True,
+    allow_credentials=False, #will change to true once the front end is done. -N
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -22,7 +23,10 @@ app.add_middleware(
 # creates tables
 @app.on_event("startup")
 def on_startup():
-    models.Base.metadata.create_all(bind=engine)
+    try:
+        models.Base.metadata.create_all(bind=engine)
+    except OperationalError: 
+        print("ABORT ABORT, MAKE SURE YOU START WITH THE: docker compose up -d : OR ELSE THERE WILL BE ISSUES")
 
 #DB dependency
 def get_db():
@@ -143,6 +147,8 @@ def delete_trip(trip_id: int, db: db_dependency):
     trip = db.get(models.Trip, trip_id)
     if not trip:
         raise HTTPException(status_code=404, detail = 'Trip not found')
+    #delete child items first to avoid fk issues.
+    db.query(models.TripItem).filter(models.TripItem.trip_id == trip_id).delete()
     db.delete(trip)
     db.commit()
     return {'status': 'deleted', 'trip_id':trip_id}
