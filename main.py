@@ -85,9 +85,23 @@ def add_trip_item(trip_id: int, payload: TripItemCreate, db: db_dependency):
     if not trip:
         raise HTTPException(status_code=404, detail="Trip not found")
 
+    #this is added to assist with the positioning of the items
+    last_pos = (
+        db.query(models.TripItem.position)
+        .filter(models.TripItem.trip_id == trip_id, models.TripItem.day == payload.day)
+        .order_by(models.TripItem.position.desc())
+        .limit(1)
+        .scalar()
+    )
+
+    next_pos = (last_pos + 1) if last_pos is not None else 1
+
+    #we will use position=next_pos when creating the item. 
+
     item = models.TripItem(
         trip_id=trip_id,
         day=payload.day,
+        position=next_pos,
         place_id=payload.place_id,
         name=payload.name,
         notes=payload.notes,
@@ -108,13 +122,18 @@ def get_trip(trip_id: int, db: db_dependency):
     if not trip:
         raise HTTPException(status_code=404, detail="Trip not found")
 
-    items = db.query(models.TripItem).filter(models.TripItem.trip_id == trip_id).all()
+    items = (
+        db.query(models.TripItem)
+        .filter(models.TripItem.trip_id == trip_id)
+        .order_by(models.TripItem.day.asc(), models.TripItem.position.asc())
+        .all()
+    )
     return {
         "id": trip.id,
         "title": trip.title,
         "destination": trip.destination,
         "items": [
-            {"id": i.id, "day": i.day, "place_id": i.place_id, "name": i.name, "notes": i.notes}
+            {"id": i.id, "day": i.day, "position": i.position, "place_id": i.place_id, "name": i.name, "notes": i.notes}
             for i in items
         ],
     }
@@ -177,7 +196,7 @@ async def places_search(q: str, lat: Optional[float] = None, lng: Optional[float
 
     return {"query": q, "count": len(results), "results": results}
 
-@app.get('/places/{places_id}')
+@app.get('/places/{place_id}')
 async def place_details(place_id:str):
     api_key = os.getenv("GOOGLE_MAPS_API_KEY")
 

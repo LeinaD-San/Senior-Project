@@ -15,6 +15,11 @@ class TripItem(Base):
     trip_id = Column(Integer, ForeignKey('trips.id'), nullable =False)
 
     day = Column(Integer, default = 1)
+
+#this is the new position, this is implemented since there is no guaranteed order. 
+#therefore position will be the order police for items within the same trip and same day. 
+    position = Column(Integer, nullable=False, default =0) #added by Nick^^
+
     place_id = Column(String, nullable=False)
     name = Column(String, nullable=False)
     notes = Column(Text, default='')
