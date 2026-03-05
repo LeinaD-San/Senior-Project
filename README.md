@@ -2,6 +2,32 @@
 
 trAgent is a web app that helps people discover new local spots (food, coffee, parks, events) and quickly plan a day-by-day itinerary. Users can search for places, generate an itinerary based on destination and interests, save trips with multiple stops, and edit notes to build a shareable plan.
 
+## Local Run
+
+### 1) Environment variables
+
+- Copy `.env.example` to `.env` and fill in `GOOGLE_MAPS_API_KEY`.
+- If you want the live map on the landing page, also set `GOOGLE_MAPS_JS_API_KEY`.
+
+### 2) Install deps
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+### 3) Start the API + landing page
+
+```bash
+source .venv/bin/activate
+uvicorn main:app --reload
+```
+
+- Landing page: `http://127.0.0.1:8000/`
+- Itinerary page: `http://127.0.0.1:8000/itinerary`
+- API docs: `http://127.0.0.1:8000/docs`
+
 ## Project Stages (Detailed Pace Plan)
 
 ### Stage 1 — Get It Running (1–2 days)
