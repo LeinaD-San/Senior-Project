@@ -1,15 +1,35 @@
 from fastapi import FastAPI, Depends, HTTPException
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from typing import List, Annotated, Optional
 import os
 import httpx
+from dotenv import load_dotenv
 import models
 from database import engine, SessionLocal
 from sqlalchemy.orm import Session
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.exc import OperationalError
 
+load_dotenv()
+
 app = FastAPI(title="Travel Agent API")
+
+
+@app.get("/config/maps")
+def config_maps():
+    maps_key = os.getenv("GOOGLE_MAPS_JS_API_KEY") or os.getenv("GOOGLE_MAPS_API_KEY")
+    return {"google_maps_js_api_key": maps_key}
+
+
+@app.get("/")
+def landing_page():
+    return FileResponse("tragent-landing.html", media_type="text/html")
+
+
+@app.get("/itinerary")
+def itinerary_page():
+    return FileResponse("itinerary_page.html", media_type="text/html")
 
 #so frontend can call API
 app.add_middleware(
@@ -251,6 +271,74 @@ async def place_details(place_id:str):
         "lng": location.get("lng"),
         "photos": photos
     }
+
+
+@app.get("/places/nearby")
+async def places_nearby(
+    lat: float,
+    lng: float,
+    keyword: Optional[str] = None,
+    radius: int = 3000,
+):
+    api_key = os.getenv("GOOGLE_MAPS_API_KEY")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="GOOGLE_MAPS_API_KEY is not set")
+
+    url = "https://maps.googleapis.com/maps/api/place/nearbysearch/json"
+    params = {
+        "location": f"{lat},{lng}",
+        "radius": str(radius),
+        "key": api_key,
+    }
+    if keyword:
+        params["keyword"] = keyword
+
+    async with httpx.AsyncClient(timeout=15) as client:
+        r = await client.get(url, params=params)
+        r.raise_for_status()
+        data = r.json()
+
+    status = data.get("status")
+    if status not in ("OK", "ZERO_RESULTS"):
+        raise HTTPException(status_code=502, detail={"google_status": status, "error": data.get("error_message")})
+
+    results = []
+    for p in data.get("results", []):
+        location = p.get("geometry", {}).get("location", {})
+        results.append(
+            {
+                "place_id": p.get("place_id"),
+                "name": p.get("name"),
+                "address": p.get("vicinity") or p.get("formatted_address"),
+                "rating": p.get("rating"),
+                "lat": location.get("lat"),
+                "lng": location.get("lng"),
+            }
+        )
+
+    return {"count": len(results), "results": results}
+
+
+@app.get("/geo/reverse")
+async def geo_reverse(lat: float, lng: float):
+    api_key = os.getenv("GOOGLE_MAPS_API_KEY")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="GOOGLE_MAPS_API_KEY is not set")
+
+    url = "https://maps.googleapis.com/maps/api/geocode/json"
+    params = {"latlng": f"{lat},{lng}", "key": api_key}
+
+    async with httpx.AsyncClient(timeout=15) as client:
+        r = await client.get(url, params=params)
+        r.raise_for_status()
+        data = r.json()
+
+    status = data.get("status")
+    if status not in ("OK", "ZERO_RESULTS"):
+        raise HTTPException(status_code=502, detail={"google_status": status, "error": data.get("error_message")})
+
+    first = (data.get("results") or [{}])[0]
+    return {"formatted_address": first.get("formatted_address")}
 
 #AI assistant
 @app.post("/ai/itinerary")
