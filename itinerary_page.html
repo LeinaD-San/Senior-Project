@@ -467,7 +467,9 @@
         <div class="chip-grid" id="chip-grid"></div>
       </div>
 
-      <button class="btn btn-primary" style="width:100%;margin-top:8px" onclick="window.location.href='/planner?dest=' + encodeURIComponent(document.getElementById('dest').value) + '&days=' + document.getElementById('days').value">
+      <button class="btn btn-primary" style="width:100%;margin-top:8px" onclick="window.location.href='/planner?dest=' + encodeURIComponent(document.getElementById('dest').value) +
+    '&days=' + encodeURIComponent(document.getElementById('days').value) +
+    '&interests=' + encodeURIComponent([...selectedInterests].join(','))">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L13.5 8.5L20 10L13.5 11.5L12 18L10.5 11.5L4 10L10.5 8.5Z"/></svg>
         Find places
       </button>
@@ -718,6 +720,25 @@
 
         wrap.appendChild(group);
       });
+    }
+    function goToPlannerWithInterests() {
+      const destination = document.getElementById("dest")?.value?.trim();
+      if (!destination) {
+        alert("Enter a destination first.");
+        return;
+      }
+
+      const interests = [...selectedInterests]; // this is your Set
+      if (!interests.length) {
+        alert("Select at least one interest.");
+        return;
+      }
+
+      const url =
+        "/planner?dest=" + encodeURIComponent(destination) +
+        "&interests=" + encodeURIComponent(interests.join(","));
+
+      window.location.href = url;
     }
 
     async function fetchPlaces(destination, interestId) {

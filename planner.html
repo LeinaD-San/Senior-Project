@@ -608,6 +608,58 @@
         }
       });
     }
+    
+    const INTEREST_TO_QUERY = {
+      food: "restaurants",
+      coffee: "coffee shop",
+      parks: "parks",
+      museums: "museums",
+      nightlife: "nightlife bars",
+      shopping: "shopping",
+      outdoors: "outdoor activities",
+      history: "historical sites",
+    };
+
+    // Build queries like: "coffee shop in Brownsville, TX"
+    function buildInterestQueries(destination, interestsCsv) {
+      if (!interestsCsv) return [];
+      const destPart = destination ? ` in ${destination}` : "";
+      return interestsCsv
+        .split(",")
+        .map(s => s.trim())
+        .filter(Boolean)
+        .map(id => (INTEREST_TO_QUERY[id] || id) + destPart);
+    }
+
+    // Fetch results for many queries and merge + dedupe
+    async function searchByInterests(destination, interestsCsv) {
+      const queries = buildInterestQueries(destination, interestsCsv);
+      if (!queries.length) return [];
+
+      const all = [];
+      for (const q of queries) {
+        const res = await fetch(API_BASE + "/places/search?q=" + encodeURIComponent(q));
+        if (!res.ok) continue;
+        const data = await res.json();
+        all.push(...(data.results || []));
+      }
+
+      // dedupe by place_id
+      const seen = new Set();
+      const deduped = [];
+      for (const p of all) {
+        if (!p.place_id || seen.has(p.place_id)) continue;
+        seen.add(p.place_id);
+        deduped.push(p);
+      }
+      return deduped;
+    }
+
+
+
+
+
+
 
     async function runSearch() {
       const q = document.getElementById('q').value.trim();
@@ -687,6 +739,7 @@
         .replaceAll("'", '&#039;');
     }
     const params = new URLSearchParams(window.location.search);
+    const qParam = params.get('q');
     const destParam = params.get('dest');
     const daysParam = parseInt(params.get('days'));
     const interestsParam = params.get('interests');
@@ -697,16 +750,46 @@
       tripState.itemsByDay = {};
       for (let d = 1; d <= daysParam; d++) tripState.itemsByDay[d] = [];
     }
+
+
     initDays();
     renderItinerary();
     renderResults([]);
-    if (destParam) {
-      document.getElementById('q').value = destParam;
-      if (interestsParam) {
-        document.getElementById('q').value = interestsParam.split(',').join(', ') + ' in ' + destParam;
-      }
+    /*
+    if (qParam && !destParam) {
+      document.getElementById('q').value = qParam;
       runSearch();
     }
+
+    if (destParam) {
+      // If interests were provided, do multi-search and combine results
+      if (interestsParam) {
+        document.getElementById('q').value = interestsParam.split(',').join(', ') + ' in ' + destParam;
+
+        (async () => {
+          const merged = await searchByInterests(destParam, interestsParam);
+          renderResults(merged);
+        })();
+      } else {
+        // fallback: regular single query search
+        document.getElementById('q').value = destParam;
+        runSearch();
+      }*/
+
+    if (destParam && interestsParam){
+      document.getElementById('q').value = interestsParam.split(',').join(', ') + ' in ' + destParam;
+      (async () => {
+        const merged = await searchByInterests(destParam, interestsParam);
+        renderResults(merged);
+      })();
+    } else if (qParam) {
+      document.getElementById('q').value = qParam;
+      runSearch();
+    } else if (destParam) {
+      document.getElementById('q').value = destParam;
+      runSearch();
+    }
+    
 
   </script>
 </body>
