@@ -231,7 +231,7 @@
             <a class="btn" href="/planner">Plan a trip</a>
           </div>
           <div class="splitCtas">
-            <a class="card" href="#discover">
+            <a class="card" href="#" id="discoverCard">
               <div class="tag"><span class="dot"></span> Local discovery</div>
               <h3>Find places around you</h3>
               <div class="meta"><span>Coffee</span><span>•</span><span>Parks</span><span>•</span><span>Food</span><span>•</span><span>Events</span></div>
@@ -334,6 +334,7 @@
       let nearbyMarkers = [];
       let mapsReady = false;
       let pendingPos = null; // holds position if maps loads after geo fires
+      let lastPos = null;
 
       function setStatus(msg, isLive) {
         const el = document.getElementById("map-status");
@@ -395,47 +396,47 @@
 
       async function loadMapsApi() {
         try {
+          console.log("Loading map config...");
           setStatus("🗺 Loading map…");
+
           const r = await fetch("/config/maps");
-          if (!r.ok) { setStatus("⚠️ Map config unavailable"); return; }
-          const data = await r.json();
-          const key = data.google_maps_js_api_key;
-          if (!key) {
-            setFallback("Set GOOGLE_MAPS_API_KEY to enable nearby picks");
+          console.log("Config response status:", r.status);
+
+          if (!r.ok) {
+            setStatus("⚠️ Map config unavailable");
             return;
           }
 
-          window.__initTragentMap = () => {
-            const start = lastPos || { lat: 25.9017, lng: -97.4975 };
+          const data = await r.json();
+          console.log("Config JSON:", data);
 
-            map = new google.maps.Map(document.getElementById("map"), {
-              center: start,
-              zoom: 14,
-              disableDefaultUI: true,
-              gestureHandling: "greedy",
-            });
+          const key = data.google_maps_js_api_key;
+          console.log("API key exists:", !!key);
 
-            userMarker = new google.maps.Marker({
-              position: start,
-              map,
-              title: "You",
-            });
-
-            loadNearby(start.lat, start.lng);
-          };
+          if (!key) {
+            setFallback("Set GOOGLE_MAPS_API_KEY to enable nearby picks");
+            setStatus("⚠️ Missing Google Maps key");
+            return;
+          }
 
           if (window.google?.maps) {
+            console.log("Google Maps already loaded");
             window.__initTragentMap();
             return;
           }
 
+          console.log("Injecting Google Maps script...");
           const s = document.createElement("script");
           s.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(key)}&callback=__initTragentMap`;
           s.async = true;
           s.defer = true;
-          s.onerror = () => setStatus("⚠️ Maps failed to load");
+          s.onerror = () => {
+            console.log("Google Maps script failed to load");
+            setStatus("⚠️ Maps failed to load");
+          };
           document.head.appendChild(s);
-        } catch {
+        } catch (err) {
+          console.error("loadMapsApi failed:", err);
           setStatus("⚠️ Could not load map");
         }
       }
@@ -495,22 +496,27 @@
 
 
       function setFallback(reason) {
-        cards.forEach((c, idx) => setCard(c.id, fallbackPlaces[idx]));
-      }
+  cards.forEach((c, idx) => setCard(c.id, fallbackPlaces[idx]));
+          }
 
       function setUserOnMap(lat, lng) {
         lastPos = { lat, lng };
         if (!map || !window.google?.maps) return;
+
         const pos = { lat, lng };
         map.setCenter(pos);
+
         if (userMarker) {
           userMarker.setPosition(pos);
         } else {
-          userMarker = new google.maps.Marker({ position: pos, map, title: "You" });
+          userMarker = new google.maps.Marker({
+            position: pos,
+            map,
+            title: "You",
+          });
         }
-      function setFallback() {
-        cards.forEach((c, i) => setCard(c.id, fallbackPlaces[i]));
       }
+    
 
       async function updateNearbyMarkers(lat, lng) {
         if (!mapsReady || !map) return;
@@ -543,7 +549,7 @@
 
       async function loadNearby(lat, lng) {
         applyPosition(lat, lng, 80);
-        updateNearbyMarkers(lat, lng);
+        await updateNearbyMarkers(lat, lng);
 
         await Promise.all(
           cards.map(async (c) => {
@@ -560,23 +566,21 @@
           })
         );
       }
-      loadMapsApi();
+      
 
       // load map right away, don't wait for geo
       loadMapsApi();
 
-      if ("geolocation" in navigator) {
-        navigator.geolocation.watchPosition(
-          (pos) => loadNearby(pos.coords.latitude, pos.coords.longitude),
-          (err) => {
-            setStatus("📍 Location denied — showing Brownsville");
-            setFallback();
-          },
-          { enableHighAccuracy: true, maximumAge: 15000, timeout: 15000 }
-        );
-      } else {
-        setStatus("📍 Location unavailable");
-        setFallback();
+      
+      const discoverSection = document.getElementById("discover");
+      const discoverBtn = document.getElementById("discoverNearbyBtn");
+      const discoverCard = document.getElementById("discoverCard")
+
+      function scrollToDiscover() {
+        discoverSection?.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        });
       }
 
       async function startDiscoverNearby() {
@@ -595,7 +599,7 @@
             scrollToDiscover();
           },
           () => {
-            setFallBack("Enable location to see nearby picks");
+            setFallback("Enable location to see nearby picks");
             scrollToDiscover();
           },
           {
@@ -606,11 +610,11 @@
         );
       }
 
-      discoverBtn?.addEventListener("click", startDiscoveryNearby);
+      discoverBtn?.addEventListener("click", startDiscoverNearby);
 
       discoverCard?.addEventListener("click", (e)=> {
         e.preventDefault();
-        startDiscoveryNearby();
+        startDiscoverNearby();
       });
     </script>
   
