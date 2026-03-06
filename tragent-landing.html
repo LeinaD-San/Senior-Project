@@ -493,9 +493,9 @@
       }
 
       const cards = [
-        { id: "rec1", keyword: "coffee shop" },
-        { id: "rec2", keyword: "park" },
-        { id: "rec3", keyword: "restaurant" },
+        { id: "rec1", keyword: "coffee shop", plannerQuery: "coffee shop"},
+        { id: "rec2", keyword: "park", plannerQuery: "park" },
+        { id: "rec3", keyword: "restaurant", plannerQuery: "restaurant" },
       ];
 
       const fallbackPlaces = [
@@ -516,6 +516,13 @@
           meta.textContent = [address, rating].filter(Boolean).join(" • ") || "";
         }
       }
+
+      function setCardLink(cardId, q) {
+        const el = document.getElementById(cardId);
+        if (!el) return;
+        el.href = "/planner?q=" + encodeURIComponent(q);
+      }
+
 
       function setFallback(reason) {
         cards.forEach((c, idx) => setCard(c.id, fallbackPlaces[idx]));
