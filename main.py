@@ -79,6 +79,9 @@ class ItineraryRequest(BaseModel):
     days: int = Field(ge=1, le=14)
     interests: List[str] = []
 
+class ReorderPayload(BaseModel):
+    ordered_item_ids: List[int] = Field(min_length=1)
+
 #app Health/activity
 @app.get("/health")
 def health():
@@ -137,7 +140,14 @@ def add_trip_item(trip_id: int, payload: TripItemCreate, db: db_dependency):
     db.add(item)
     db.commit()
     db.refresh(item)
-    return {"id": item.id, "trip_id": item.trip_id, "day": item.day, "place_id": item.place_id, "name": item.name}
+    return {
+    "id": item.id,
+    "trip_id": item.trip_id,
+    "day": item.day,
+    "position": item.position,
+    "place_id": item.place_id,
+    "name": item.name
+}
 
 
 @app.get("/trips/{trip_id}")
@@ -183,6 +193,37 @@ def delete_trip_item(trip_id: int, item_id: int, db: db_dependency):
     db.delete(item)
     db.commit()
     return{'status': 'deleted', 'item_id':item_id}
+
+@app.put("/trips/{trip_id}/days/{day}/reorder")
+def reorder_day_items(trip_id: int, day: int, payload: ReorderPayload, db: db_dependency):
+    items = (
+        db.query(models.TripItem)
+        .filter(models.TripItem.trip_id == trip_id, models.TripItem.day == day)
+        .all()
+    )
+    items_by_id = {i.id: i for i in items}
+
+    for item_id in payload.ordered_item_ids:
+        if item_id not in items_by_id:
+            raise HTTPException(status_code=400, detail=f'Item {item_id} not found in this trip/day')
+
+    db.commit()
+
+    updated = (
+        db.query(models.TripItem)
+        .filter(models.TripItem.trip_id == trip_id, models.TripItem.day == day)
+        .order_by(models.TripItem.position.asc())
+        .all()
+    )
+    return {
+        'trip_id': trip_id,
+        'day': day,
+        'items': [
+            {"id": i.id, "position": i.position, "place_id": i.place_id, "name": i.name, "notes": i.notes}
+            for i in updated
+        ],
+    } 
+
 
 #Google Maps
 @app.get("/places/search")
