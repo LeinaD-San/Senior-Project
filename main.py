@@ -561,7 +561,18 @@ async def place_details(place_id:str):
 
     params = {
         'place_id':place_id,
-        'key': api_key
+        'key': api_key,
+        'fields': ','.join([
+            'place_id',
+            'name',
+            'formatted_address',
+            'formatted_phone_number',
+            'website',
+            'rating',
+            'opening_hours',
+            'geometry',
+            'photos',
+        ])
     }
 
     async with httpx.AsyncClient(timeout=15)as client:
@@ -570,23 +581,21 @@ async def place_details(place_id:str):
         data = r.json()
 
     status = data.get('status')
-
     if status != 'OK':
         raise HTTPException(
             status_code=502,
             detail = {'google_status': status, 'error': data.get('error_message')}
         )
-    place = data.get('result',{})
 
+    place = data.get('result',{})
     location = place.get('geometry', {}).get('location',{})
 
     photos = []
-
-    for p in place.get('photos',[]):
+    for p in place.get('photos',[])[:8]:
         ref = p.get('photo_reference')
         if ref:
             photos.append(
-                f"https://maps.googleapis.com/maps/api/place/photo?maxwidth=800&photo_reference={ref}&key={api_key}"
+                f"https://maps.googleapis.com/maps/api/place/photo?maxwidth=1200&photo_reference={ref}&key={api_key}"
             )
     return {
         "place_id": place.get("place_id"),
@@ -597,7 +606,9 @@ async def place_details(place_id:str):
         "website": place.get("website"),
         "lat": location.get("lat"),
         "lng": location.get("lng"),
-        "photos": photos
+        "hours": (place.get("opening_hours") or {}).get("weekday_text", []),
+        "open_now": (place.get("opening_hours") or {}).get("open_now", None),
+        "photos": photos,
     }
 
 

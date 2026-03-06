@@ -294,6 +294,66 @@
     // Use same-origin since this page is served by FastAPI
     const API_BASE = '';
 
+    async function openDetails(placeId) {
+      const modal = document.getElementById("detailsModal");
+      const title = document.getElementById("detailsTitle");
+      const body = document.getElementById("detailsBody");
+      modal.style.display = "block";
+      title.textContent = "Loading…";
+      body.textContent = "Loading…";
+
+        try {
+          const res = await fetch(`/places/details/${encodeURIComponent(placeId)}`);
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.detail || "Failed to load details");
+
+          title.textContent = data.name || "Place details";
+
+          const hoursHtml = (data.hours && data.hours.length)
+            ? `<div style="margin-top:10px;"><div style="font-weight:900;margin-bottom:6px;">Hours</div>
+                <div style="color:rgba(11,18,32,.75); font-size:14px; line-height:1.5;">
+                  ${data.hours.map(h => `<div>${escapeHtml(h)}</div>`).join("")}
+                </div>
+              </div>`
+            : "";
+
+          const photosHtml = (data.photos && data.photos.length)
+            ? `<div style="display:flex; gap:10px; overflow:auto; padding:8px 0 2px; margin-top:10px;">
+                ${data.photos.map(url => `
+                  <img src="${url}" alt="" style="height:140px; border-radius:12px; object-fit:cover;" />
+                `).join("")}
+              </div>`
+            : "";
+
+          body.innerHTML = `
+            <div style="color:rgba(11,18,32,.75); font-size:14px; line-height:1.5;">
+              ${data.address ? `<div><b>Address:</b> ${escapeHtml(data.address)}</div>` : ""}
+              ${data.phone ? `<div><b>Phone:</b> ${escapeHtml(data.phone)}</div>` : ""}
+              ${data.website ? `<div><b>Website:</b> <a href="${data.website}" target="_blank" rel="noreferrer">${escapeHtml(data.website)}</a></div>` : ""}
+              ${typeof data.open_now === "boolean" ? `<div><b>Open now:</b> ${data.open_now ? "Yes" : "No"}</div>` : ""}
+              ${data.rating ? `<div><b>Rating:</b> ${escapeHtml(String(data.rating))}</div>` : ""}
+            </div>
+            ${photosHtml}
+            ${hoursHtml}
+          `;
+        } catch (e) {
+          title.textContent = "Place details";
+          body.textContent = "Could not load details. Check backend logs and API key.";
+        }
+      }
+
+      function closeDetails() {
+        document.getElementById("detailsModal").style.display = "none";
+      }
+
+      // Close modal when clicking backdrop
+      document.addEventListener("click", (e) => {
+        const modal = document.getElementById("detailsModal");
+        if (modal.style.display === "block" && e.target === modal) closeDetails();
+      });
+
+
+
     function getToken() {
       return localStorage.getItem('tragent_token');
     }
@@ -340,6 +400,8 @@
       }
       tripState.itemsByDay = nextItems;
       if (tripState.activeDay > newDays) tripState.activeDay = 1;
+
+
       initDays();
       renderDays();
       renderItinerary();
@@ -601,7 +663,12 @@
           </div>
         `;
         root.appendChild(card);
-
+        card.style.cursor = "pointer";
+        card.addEventListener("click", (e) => {
+          // don't trigger if they clicked the Add button
+          if (e.target.closest(".addBtn")) return;
+          openDetails(p.place_id);
+        });  
         const btn = card.querySelector(".addBtn");
         if (btn && !added) {
           btn.addEventListener('click', () => addToTrip(p));
@@ -791,6 +858,21 @@
     }
     
 
+
+
+
   </script>
+  <div id="detailsModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:9999; padding:18px;">
+    <div style="max-width:720px; margin:40px auto; background:white; border-radius:16px; overflow:hidden;">
+      <div style="display:flex; justify-content:space-between; align-items:center; padding:14px 16px; border-bottom:1px solid rgba(11,18,32,.12);">
+        <div style="font-weight:900" id="detailsTitle">Place details</div>
+        <button onclick="closeDetails()" style="border:none; background:transparent; font-size:18px; cursor:pointer;">✕</button>
+      </div>
+
+      <div style="padding:16px;" id="detailsBody">
+        Loading…
+      </div>
+    </div>
+  </div>  
 </body>
 </html>
