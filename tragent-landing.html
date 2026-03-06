@@ -227,7 +227,7 @@
             Save stops, add notes, and keep itineraries you can revisit.
           </p>
           <div class="ctaRow">
-            <a class="btn primary" href="#discover">Discover nearby</a>
+            <button class="btn primary" type="button" id="discoverNearbyBtn">Discover nearby</button>
             <a class="btn" href="/planner">Plan a trip</a>
           </div>
           <div class="splitCtas">
@@ -420,15 +420,14 @@
               map,
               title: "You",
             });
-            
+
             loadNearby(start.lat, start.lng);
-            };
+          };
 
-
-            if (window.google?.maps) {
-              window.__initTragentMap();
-              return;
-            }
+          if (window.google?.maps) {
+            window.__initTragentMap();
+            return;
+          }
 
           const s = document.createElement("script");
           s.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(key)}&callback=__initTragentMap`;
@@ -464,9 +463,9 @@
       }
 
       const cards = [
-        { id: "rec1", keyword: "coffee shop" },
-        { id: "rec2", keyword: "park" },
-        { id: "rec3", keyword: "restaurant" },
+        { id: "rec1", keyword: "coffee shop", plannerQuery: "coffee shop"},
+        { id: "rec2", keyword: "park", plannerQuery: "park" },
+        { id: "rec3", keyword: "restaurant", plannerQuery: "restaurant" },
       ];
 
       const fallbackPlaces = [
@@ -487,6 +486,31 @@
           meta.textContent = [address, rating].filter(Boolean).join(" • ") || "";
         }
       }
+
+      function setCardLink(cardId, q) {
+        const el = document.getElementById(cardId);
+        if (!el) return;
+        el.href = "/planner?q=" + encodeURIComponent(q);
+      }
+
+
+      function setFallback(reason) {
+        cards.forEach((c, idx) => setCard(c.id, fallbackPlaces[idx]));
+      }
+
+      function setUserOnMap(lat, lng) {
+        lastPos = { lat, lng };
+        if (!map || !window.google?.maps) return;
+
+        const pos = { lat, lng };
+        map.setCenter(pos);
+
+        if (userMarker) {
+          userMarker.setPosition(pos);
+        } else {
+          userMarker = new google.maps.Marker({ position: pos, map, title: "You" });
+        }}
+        
 
       function setFallback() {
         cards.forEach((c, i) => setCard(c.id, fallbackPlaces[i]));
@@ -540,6 +564,7 @@
           })
         );
       }
+      loadMapsApi();
 
       // load map right away, don't wait for geo
       loadMapsApi();
@@ -557,7 +582,42 @@
         setStatus("📍 Location unavailable");
         setFallback();
       }
+
+      async function startDiscoverNearby() {
+        if (!("geolocation" in navigator)) {
+          setFallback("Location unavailable")
+          scrollToDiscover();
+          return;
+        }
+
+        navigator.geolocation.getCurrentPosition(
+          async (pos) => {
+            const lat = pos.coords.latitude;
+            const lng = pos.coords.longitude;
+
+            await loadNearby(lat,lng);
+            scrollToDiscover();
+          },
+          () => {
+            setFallBack("Enable location to see nearby picks");
+            scrollToDiscover();
+          },
+          {
+            enableHighAccuracy: true,
+            maximumAge: 15000,
+            timeout: 10000,
+          }
+        );
+      }
+
+      discoverBtn?.addEventListener("click", startDiscoveryNearby);
+
+      discoverCard?.addEventListener("click", (e)=> {
+        e.preventDefault();
+        startDiscoveryNearby();
+      });
     </script>
   
   </body>
+
 </html>
