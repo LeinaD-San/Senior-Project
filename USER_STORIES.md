@@ -33,3 +33,19 @@
 
 - As a user, I want the app to handle “no results” gracefully so I’m not stuck.
 - As a user, I want my API keys to stay private so my account isn’t abused.
+
+## Accounts
+
+- As a user, I want to create an account with email and password so I can save my itineraries.
+- As a user, I want to log in after creating my account so I can access my saved itineraries from any device.
+- As a user, I want to stay signed in between page refreshes so I don’t have to log in repeatedly.
+- As a user, I want to plan a trip without an account so I can try the app quickly.
+- As a user, I want to be prompted to sign up when I try to save an itinerary so I understand why an account is needed.
+- As a user, I want to save an itinerary to my account so I can view it later.
+- As a user, I want to view a list of my saved itineraries so I can reopen one quickly.
+- As a user, I want to open a saved itinerary so I can continue editing it.
+- As a user, I want to edit an itinerary (notes/reorder/delete stops) so I can personalize my plan.
+- As a user, I want to delete an itinerary so I can remove old plans.
+- As a user, I want to log out so I can protect my account on shared devices.
+- As a user, I want clear error messages for invalid email/password so I know how to fix it.
+- As a user, I want my password to be stored securely so my account is protected.
