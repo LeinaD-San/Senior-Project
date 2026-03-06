@@ -445,6 +445,7 @@ def planner_page():
 
 
 #Google Maps
+'''
 @app.get("/places/search")
 async def places_search(q: str, lat: Optional[float] = None, lng: Optional[float] = None, radius: int = 30000):
     api_key = os.getenv("GOOGLE_MAPS_API_KEY")
@@ -481,6 +482,65 @@ async def places_search(q: str, lat: Optional[float] = None, lng: Optional[float
         })
 
     return {"query": q, "count": len(results), "results": results}
+'''
+@app.get("/places/search")
+async def places_search(
+    q: str,
+    lat: Optional[float] = None,
+    lng: Optional[float] = None,
+    radius: int = 30000
+):
+    api_key = os.getenv("GOOGLE_MAPS_API_KEY")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="GOOGLE_MAPS_API_KEY is not set")
+
+    url = "https://maps.googleapis.com/maps/api/place/textsearch/json"
+    params = {"query": q, "key": api_key}
+
+    if lat is not None and lng is not None:
+        params["location"] = f"{lat},{lng}"
+        params["radius"] = str(radius)
+
+    async with httpx.AsyncClient(timeout=15) as client:
+        r = await client.get(url, params=params)
+        r.raise_for_status()
+        data = r.json()
+
+    status = data.get("status")
+    if status not in ("OK", "ZERO_RESULTS"):
+        raise HTTPException(
+            status_code=502,
+            detail={"google_status": status, "error": data.get("error_message")},
+        )
+
+    results = []
+    for p in data.get("results", []):
+        location = p.get("geometry", {}).get("location", {})
+
+        # ✅ Build a thumbnail URL if Google returned a photo_reference
+        photos = p.get("photos", [])
+        photo_url = None
+        if photos and photos[0].get("photo_reference"):
+            ref = photos[0]["photo_reference"]
+            photo_url = (
+                "https://maps.googleapis.com/maps/api/place/photo"
+                f"?maxwidth=400&photo_reference={ref}&key={api_key}"
+            )
+
+        results.append({
+            "place_id": p.get("place_id"),
+            "name": p.get("name"),
+            "address": p.get("formatted_address"),
+            "rating": p.get("rating"),
+            "lat": location.get("lat"),
+            "lng": location.get("lng"),
+            "photo_url": photo_url,   # ✅ added
+        })
+
+    return {"query": q, "count": len(results), "results": results}
+
+
+
 
 @app.get('/places/{place_id}')
 async def place_details(place_id:str):

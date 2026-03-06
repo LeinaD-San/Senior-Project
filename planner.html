@@ -581,20 +581,31 @@
         const card = document.createElement('div');
         card.className = 'card';
         card.innerHTML = `
-          <div class="thumb">Photo</div>
+          <div class="thumb">
+            ${
+              p.photo_url
+                ? `<img src="${p.photo_url}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:14px;" />`
+                : `Photo`
+            }
+          </div>
           <div class="cardBody">
             <div class="cardTitle">${escapeHtml(p.name || 'Unknown')}</div>
             <div class="cardAddr">${escapeHtml(p.address || '')}</div>
             <div class="cardRow">
               ${p.rating ? `<span class="pill">⭐ ${escapeHtml(String(p.rating))}</span>` : ``}
               <span class="pill">Day ${tripState.activeDay}</span>
-              <button class="addBtn" ${added ? 'disabled' : ''} onclick='addToTrip(${JSON.stringify(p).replace(/'/g, "\\'")})'>
+              <button class="addBtn" ${added ? 'disabled' : ''} data-place-id="${escapeHtml(p.place_id)}">
                 ${added ? 'Added ✅' : 'Add to Trip'}
               </button>
             </div>
           </div>
         `;
         root.appendChild(card);
+
+        const btn = card.querySelector(".addBtn");
+        if (btn && !added) {
+          btn.addEventListener('click', () => addToTrip(p));
+        }
       });
     }
 
