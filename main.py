@@ -17,6 +17,11 @@ from sqlalchemy.orm import Session
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.exc import OperationalError
 
+from pathlib import Path
+from fastapi.responses import FileResponse
+
+BASE_DIR = Path(__file__).resolve().parent
+
 load_dotenv()
 
 app = FastAPI(title="Travel Agent API")
@@ -30,17 +35,17 @@ def config_maps():
 
 @app.get("/")
 def landing_page():
-    return FileResponse("itinerary_page.html", media_type="text/html")
+    return FileResponse(BASE_DIR / "itinerary_page.html", media_type="text/html")
 
 
 @app.get("/itinerary")
 def itinerary_page():
-    return FileResponse("itinerary_page.html", media_type="text/html")
+    return FileResponse(BASE_DIR / 'itinerary_page.html',media_type='text/html')
 
 
 @app.get("/login")
 def login_page():
-    return FileResponse("login.html", media_type="text/html")
+    return FileResponse(BASE_DIR / "login.html", media_type="text/html")
 
 #so frontend can call API
 app.add_middleware(
@@ -438,10 +443,13 @@ def reorder_day_items(
 #trip notepad
 @app.get("/planner")
 def planner_page():
-    return FileResponse("planner.html", media_type="text/html")
+    return FileResponse(BASE_DIR / "planner.html", media_type="text/html")
 
 
-    
+#account
+@app.get("/account")
+def account_page():
+    return FileResponse("account.html", media_type="text/html")   
 
 
 #Google Maps
@@ -542,7 +550,7 @@ async def places_search(
 
 
 
-@app.get('/places/{place_id}')
+@app.get('/places/details/{place_id}')
 async def place_details(place_id:str):
     api_key = os.getenv("GOOGLE_MAPS_API_KEY")
 
