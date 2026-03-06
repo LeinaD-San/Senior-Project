@@ -298,6 +298,14 @@
       return localStorage.getItem('tragent_token');
     }
 
+    function currentNextUrl() {
+      return window.location.pathname + window.location.search;
+    }
+
+    function updateSignInLink() {
+      document.getElementById('signInLink').href = `/login?next=${encodeURIComponent(currentNextUrl())}`;
+    }
+
     function setSignedInUi(signedIn) {
       document.getElementById('signInLink').style.display = signedIn ? 'none' : '';
       document.getElementById('logoutBtn').style.display = signedIn ? '' : 'none';
@@ -679,7 +687,7 @@
     async function saveTrip() {
       const token = getToken();
       if (!token) {
-        window.location.href = '/login';
+        window.location.href = `/login?next=${encodeURIComponent(currentNextUrl())}`;
         return;
       }
 
@@ -693,7 +701,7 @@
       });
       const trip = await resTrip.json().catch(() => ({}));
       if (!resTrip.ok) {
-        window.location.href = '/login';
+        window.location.href = `/login?next=${encodeURIComponent(currentNextUrl())}`;
         return;
       }
 
@@ -788,6 +796,12 @@
     } else if (destParam) {
       document.getElementById('q').value = destParam;
       runSearch();
+    }
+
+    updateSignInLink();
+    setSignedInUi(!!getToken());
+    if (getToken()) {
+      loadSavedTrips().catch(() => {});
     }
     
 

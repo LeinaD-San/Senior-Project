@@ -403,7 +403,11 @@
         </div>
         <span>trAgent</span>
       </a>
-      <a class="btn btn-ghost" href="/login?next=%2F">Sign in</a>
+      <div style="display:flex;gap:10px;align-items:center;">
+        <a class="btn btn-ghost" id="signInLink" href="/login">Sign in</a>
+        <a class="btn btn-ghost hidden" id="accountLink" href="/planner">My account</a>
+        <button class="btn btn-ghost hidden" id="logoutBtn" type="button" onclick="logout()">Log out</button>
+      </div>
     </nav>
 
     <div class="hero">
@@ -607,6 +611,9 @@
       screens.forEach(s => {
         document.getElementById('screen-' + s).classList.toggle('hidden', s !== name);
       });
+      const url = new URL(window.location.href);
+      url.searchParams.set('screen', name);
+      window.history.replaceState({}, '', url);
       window.scrollTo(0, 0);
     }
 
@@ -935,6 +942,56 @@
       if (!res.ok) throw new Error('API ' + res.status);
       return res.json();
     }
+
+    function getToken() {
+      return localStorage.getItem('tragent_token');
+    }
+
+    function setSignedInUi(signedIn) {
+      document.getElementById('signInLink').classList.toggle('hidden', signedIn);
+      document.getElementById('accountLink').classList.toggle('hidden', !signedIn);
+      document.getElementById('logoutBtn').classList.toggle('hidden', !signedIn);
+    }
+
+    function updateSignInLink() {
+      const url = new URL(window.location.href);
+      const next = url.pathname + url.search;
+      document.getElementById('signInLink').href = `/login?next=${encodeURIComponent(next)}`;
+    }
+
+    async function logout() {
+      const token = getToken();
+      localStorage.removeItem('tragent_token');
+      setSignedInUi(false);
+      if (!token) return;
+      await fetch('/auth/logout', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      }).catch(() => {});
+    }
+
+    (async () => {
+      updateSignInLink();
+
+      const url = new URL(window.location.href);
+      const screen = url.searchParams.get('screen');
+      if (screen && screens.includes(screen)) {
+        showScreen(screen);
+      }
+
+      const token = getToken();
+      if (!token) {
+        setSignedInUi(false);
+        return;
+      }
+
+      try {
+        const res = await fetch('/me', { headers: { Authorization: `Bearer ${token}` } });
+        setSignedInUi(res.ok);
+      } catch {
+        setSignedInUi(false);
+      }
+    })();
   </script>
 
 </body>
