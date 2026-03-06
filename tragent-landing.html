@@ -1,54 +1,33 @@
 <!doctype html>
 <html lang="en">
   <head>
-    <!-- Basic page metadata for browser + mobile responsiveness -->
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-
-    <!-- Page title shown in the browser tab -->
     <title>trAgent — Brownsville-first local discovery</title>
-
-    <!-- Font loading (single external dependency) -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
     <style>
-      /*
-        Theme tokens (colors, shadows, radii).
-        Change these values to restyle the whole page consistently.
-      */
       :root{
         --bg:#ffffff;
         --ink:#0b1220;
         --text:rgba(11,18,32,.86);
         --muted:rgba(11,18,32,.64);
-
         --orange:#ff6a00;
         --orange2:#ff9a3d;
         --amber:#ffb703;
-
         --surface:rgba(255,255,255,.86);
         --surface2:rgba(11,18,32,.035);
-
         --border:rgba(11,18,32,.10);
         --border2:rgba(11,18,32,.14);
-
         --shadow:0 26px 80px rgba(11,18,32,.12);
         --shadow2:0 16px 40px rgba(11,18,32,.10);
-
         --radius:20px;
         --radius2:16px;
         --radius3:12px;
       }
-
-      /* Base element defaults */
       *{box-sizing:border-box}
       html,body{height:100%}
-
-      /*
-        App background: white base + soft orange gradients for depth.
-        Uses only CSS (no images) to keep the mock lightweight.
-      */
       body{
         margin:0;
         font-family: Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
@@ -59,26 +38,10 @@
           radial-gradient(900px 600px at 50% 110%, rgba(255,183,3,.10), transparent 62%),
           var(--bg);
       }
-
-      /* Links are styled like plain text by default in this mock */
       a{color:inherit;text-decoration:none}
-
-      /* Accessible focus ring for keyboard navigation */
-      :focus-visible{
-        outline:3px solid rgba(255,106,0,.35);
-        outline-offset:3px;
-        border-radius:12px;
-      }
-
-      /* Page width + horizontal padding */
+      :focus-visible{outline:3px solid rgba(255,106,0,.35);outline-offset:3px;border-radius:12px;}
       .container{max-width:1120px;margin:0 auto;padding:22px}
-
-      /* Top navigation: brand + links + actions */
-      .nav{
-        display:flex;align-items:center;justify-content:space-between;gap:16px;
-        padding:12px 0;
-      }
-
+      .nav{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:12px 0;}
       .brand{display:flex;align-items:center;gap:10px;font-weight:900;letter-spacing:-.03em}
       .logo{
         width:36px;height:36px;border-radius:12px;
@@ -86,15 +49,10 @@
         background:linear-gradient(135deg,var(--orange),var(--orange2),var(--amber));
         box-shadow:0 18px 55px rgba(255,106,0,.25);
       }
-
       .logo svg{width:22px;height:22px;display:block}
-
       .navlinks{display:flex;gap:18px;color:var(--muted);font-weight:700;font-size:14px}
       .navlinks a:hover{color:var(--ink)}
-
       .navRight{display:flex;gap:10px;align-items:center}
-
-      /* Button system: default, primary (orange), ghost (transparent) */
       .btn{
         display:inline-flex;align-items:center;justify-content:center;
         height:42px;padding:0 16px;border-radius:14px;
@@ -104,54 +62,26 @@
         box-shadow:0 1px 0 rgba(255,255,255,.9) inset, 0 12px 28px rgba(11,18,32,.06);
         transition: transform .12s ease, filter .12s ease;
       }
-
       .btn:hover{transform:translateY(-1px)}
       .btn:active{transform:translateY(0px)}
-
-      .btn.primary{
-        border:none;
-        color:white;
-        background:linear-gradient(135deg,var(--orange),var(--orange2));
-        box-shadow:0 18px 50px rgba(255,106,0,.26);
-      }
-
-      .btn.ghost{
-        background:transparent;
-        box-shadow:none;
-      }
-
-      /* Main hero layout: content (left) + preview panel (right) */
+      .btn.primary{border:none;color:white;background:linear-gradient(135deg,var(--orange),var(--orange2));box-shadow:0 18px 50px rgba(255,106,0,.26);}
+      .btn.ghost{background:transparent;box-shadow:none;}
       .hero{display:grid;grid-template-columns:1.08fr .92fr;gap:22px;align-items:center;margin-top:34px}
-
-      /* Small badge above the headline */
       .eyebrow{
         display:inline-flex;gap:8px;align-items:center;
         padding:8px 12px;border-radius:999px;
         border:1px solid rgba(11,18,32,.10);
         background:rgba(255,255,255,.86);
-        color:var(--muted);
-        font-weight:800;
-        font-size:12px;
+        color:var(--muted);font-weight:800;font-size:12px;
         box-shadow:0 10px 26px rgba(11,18,32,.06);
       }
-
-
-      /* Headline + gradient text effect */
       h1{margin:14px 0 12px;font-size:52px;line-height:1.12;letter-spacing:-.05em}
-
       .gradientText{
         background:linear-gradient(135deg, var(--ink), rgba(11,18,32,.86), var(--orange), var(--orange2));
-        -webkit-background-clip:text;
-        background-clip:text;
-        color:transparent;
+        -webkit-background-clip:text;background-clip:text;color:transparent;
       }
-
       .sub{color:var(--text);font-size:16px;line-height:1.7;max-width:64ch}
-
-      /* CTA row under the hero copy */
       .ctaRow{display:flex;gap:10px;flex-wrap:wrap;margin-top:18px}
-
-      /* Planner card: visual mock for the future trip planner form */
       .planner{
         margin-top:18px;
         border:1px solid rgba(11,18,32,.10);
@@ -161,11 +91,7 @@
         padding:10px;
         backdrop-filter: blur(14px);
       }
-
-      /* Planner layout: destination + days + interests + generate button */
       .plannerGrid{display:grid;grid-template-columns:1.2fr .6fr .7fr auto;gap:10px}
-
-      /* Shared input style */
       .field{
         height:46px;border-radius:var(--radius3);
         border:1px solid rgba(11,18,32,.12);
@@ -173,22 +99,15 @@
         color:var(--ink);
         padding:0 14px;font-size:14px;outline:none;
       }
-
       .field::placeholder{color:rgba(11,18,32,.40)}
-
-      /* Quick "vibe" chips (visual only) */
       .pillRow{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
-
       .pill{
         padding:8px 10px;border-radius:999px;
         border:1px solid rgba(11,18,32,.10);
         background:rgba(255,255,255,.78);
         color:rgba(11,18,32,.68);
-        font-weight:800;
-        font-size:12px;
+        font-weight:800;font-size:12px;
       }
-
-      /* Right-side panel container */
       .panel{
         border:1px solid var(--border2);
         background:rgba(255,255,255,.78);
@@ -197,67 +116,45 @@
         padding:16px;
         backdrop-filter: blur(16px);
       }
-
-      .mapWrap{position:relative;border-radius:16px;overflow:hidden;height:360px;border:1px solid rgba(11,18,32,.10);background:rgba(11,18,32,.03)}
-      #map{width:100%;height:100%}
-
-      /* Decorative preview area (acts like a map/itinerary preview) */
-      .preview{
+      /* Map wrapper — explicit height so Google Maps has space to render */
+      .mapWrap{
         position:relative;
         border-radius:16px;
         overflow:hidden;
         height:360px;
         border:1px solid rgba(11,18,32,.10);
-        background:
-          radial-gradient(560px 260px at 60% 42%, rgba(255,106,0,.18), transparent 60%),
-          radial-gradient(520px 260px at 28% 76%, rgba(255,154,61,.16), transparent 62%),
-          radial-gradient(620px 320px at 86% 26%, rgba(255,183,3,.14), transparent 60%),
-          linear-gradient(180deg, rgba(11,18,32,.03), rgba(11,18,32,.01));
+        background:rgba(11,18,32,.03);
       }
+      #map{width:100%;height:100%}
 
-      /* Floating labels in the preview area */
-      .chip{
+      /* Location status badge overlaid on the map */
+      #map-status{
         position:absolute;
-        display:flex;gap:8px;align-items:center;
-        padding:10px 12px;border-radius:999px;
+        bottom:10px;
+        left:50%;
+        transform:translateX(-50%);
+        z-index:10;
         background:rgba(255,255,255,.92);
         border:1px solid rgba(11,18,32,.12);
-        backdrop-filter: blur(10px);
-        font-weight:800;font-size:13px;
+        backdrop-filter:blur(10px);
+        border-radius:999px;
+        padding:6px 14px;
+        font-size:12px;
+        font-weight:700;
+        color:rgba(11,18,32,.64);
+        white-space:nowrap;
+        pointer-events:none;
+        transition:opacity .3s;
       }
+      #map-status.live{color:#16a34a}
 
-      .chip span{
-        width:9px;height:9px;border-radius:50%;
-        background:linear-gradient(135deg,var(--orange),var(--orange2));
-        box-shadow:0 0 0 3px rgba(255,106,0,.14);
-      }
-
-      .chip.c1{top:56px;left:48px}
-      .chip.c2{top:154px;left:210px}
-      .chip.c3{top:252px;left:78px}
-      .chip.c4{top:116px;left:78%}
-
-      /* Small stats row under the preview */
       .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:12px}
-
-      .stat{
-        border:1px solid rgba(11,18,32,.10);
-        background:rgba(255,255,255,.75);
-        border-radius:16px;
-        padding:12px;
-      }
-
+      .stat{border:1px solid rgba(11,18,32,.10);background:rgba(255,255,255,.75);border-radius:16px;padding:12px;}
       .stat b{display:block;font-size:18px;letter-spacing:-.02em}
       .stat small{color:rgba(11,18,32,.64);font-weight:800}
-
-      /* Shared section styles below the hero */
       .section{margin-top:40px}
       .section h2{font-size:22px;margin:0 0 14px;letter-spacing:-.02em}
-
-      /* 3-column card grid (collapses on smaller screens) */
       .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
-
-      /* Card style used for example picks + how-it-works */
       .card{
         border:1px solid rgba(11,18,32,.10);
         background:rgba(255,255,255,.88);
@@ -266,32 +163,22 @@
         transition: transform .15s ease, border-color .15s ease;
         box-shadow:0 1px 0 rgba(255,255,255,.9) inset, 0 18px 40px rgba(11,18,32,.08);
       }
-
       .card:hover{transform:translateY(-2px);border-color:rgba(255,106,0,.24)}
-
       .tag{display:inline-flex;align-items:center;gap:8px;color:rgba(11,18,32,.62);font-weight:900;font-size:12px}
       .dot{width:7px;height:7px;border-radius:99px;background:rgba(255,106,0,.95)}
-
       .card h3{margin:10px 0 6px;letter-spacing:-.02em}
       .meta{display:flex;gap:10px;flex-wrap:wrap;color:rgba(11,18,32,.62);font-weight:700;font-size:13px;line-height:1.45}
-
       .footer{
-        margin:42px 0 16px;
-        color:rgba(11,18,32,.62);
+        margin:42px 0 16px;color:rgba(11,18,32,.62);
         display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;
-        border-top:1px solid rgba(11,18,32,.10);
-        padding-top:16px;
+        border-top:1px solid rgba(11,18,32,.10);padding-top:16px;
       }
-
       .footer a{color:rgba(11,18,32,.62);font-weight:700}
       .footer a:hover{color:var(--ink)}
-
       .splitCtas{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px}
       .splitCtas .card{padding:16px}
       .splitCtas .card h3{margin-top:8px}
       .splitCtas .card .meta{margin-top:6px}
-
-      /* Responsive layout rules */
       @media (max-width: 980px){
         .hero{grid-template-columns:1fr}
         h1{font-size:42px}
@@ -302,7 +189,6 @@
         .plannerGrid{grid-template-columns:1fr 1fr;}
         .plannerGrid .btn{grid-column:1 / -1}
       }
-
       @media (max-width: 520px){
         .plannerGrid{grid-template-columns:1fr}
       }
@@ -310,11 +196,10 @@
   </head>
   <body>
     <div class="container">
-      <!-- Top navigation -->
       <header class="nav">
         <a class="brand" href="#">
           <div class="logo" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
               <path d="M12 22s7-4.6 7-12a7 7 0 1 0-14 0c0 7.4 7 12 7 12Z" stroke="white" stroke-width="2" stroke-linejoin="round"/>
               <path d="M12 13.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" stroke="white" stroke-width="2"/>
               <path d="M12 8.2l1.8 3.6-3.6-1.8L12 8.2Z" fill="white"/>
@@ -322,36 +207,30 @@
           </div>
           <span>trAgent</span>
         </a>
-
         <nav class="navlinks" aria-label="Primary">
           <a href="#discover">Discover</a>
           <a href="#plan">Plan</a>
           <a href="#how">How it works</a>
         </nav>
-
         <div class="navRight">
           <a class="btn ghost" href="#">Sign in</a>
           <a class="btn primary" href="/planner">Plan a trip</a>
         </div>
       </header>
 
-      <!-- Hero: value prop + planner mock + preview panel -->
       <main class="hero">
         <section>
           <div class="eyebrow"><span>Starting in:</span> <b>Brownsville, Texas</b></div>
-
           <h1 class="gradientText">Local discovery, and real trip planning.</h1>
           <p class="sub">
             Use trAgent in two modes: discover nearby gems or plan a multi-day trip.
             Save stops, add notes, and keep itineraries you can revisit.
           </p>
-
           <div class="ctaRow">
             <a class="btn primary" href="#discover">Discover nearby</a>
             <a class="btn" href="/planner">Plan a trip</a>
           </div>
-
-          <div class="splitCtas" aria-label="Choose a path">
+          <div class="splitCtas">
             <a class="card" href="#discover">
               <div class="tag"><span class="dot"></span> Local discovery</div>
               <h3>Find places around you</h3>
@@ -363,16 +242,14 @@
               <div class="meta"><span>Multiple days</span><span>•</span><span>Saved trips</span><span>•</span><span>Notes + edits</span></div>
             </a>
           </div>
-
-          <!-- Planner mock: visual-only form controls (not wired up) -->
-          <div id="plan" class="planner" role="search" aria-label="Quick trip planner">
+          <div id="plan" class="planner">
             <div class="plannerGrid">
               <input class="field" value="Brownsville, TX" aria-label="Destination" />
               <input class="field" placeholder="Days" value="1" inputmode="numeric" aria-label="Days" />
               <input class="field" placeholder="Interests (ex: coffee, parks)" aria-label="Interests" />
               <button class="btn primary" type="button">Generate</button>
             </div>
-            <div class="pillRow" aria-label="Quick vibes">
+            <div class="pillRow">
               <span class="pill">Coffee + pastries</span>
               <span class="pill">Parks + trails</span>
               <span class="pill">Date night</span>
@@ -383,8 +260,10 @@
         </section>
 
         <aside class="panel" aria-label="Map preview">
-          <div class="mapWrap" aria-label="Map">
+          <div class="mapWrap">
             <div id="map"></div>
+            <!-- Live location status badge -->
+            <div id="map-status">📍 Loading map…</div>
           </div>
           <div class="stats">
             <div class="stat"><b>Local-first</b><small>avoid the usual chains</small></div>
@@ -394,7 +273,6 @@
         </aside>
       </main>
 
-      <!-- Example content cards (placeholders) -->
       <section id="discover" class="section">
         <h2>Local discovery examples</h2>
         <div class="grid">
@@ -416,7 +294,6 @@
         </div>
       </section>
 
-      <!-- How-it-works cards (placeholders) -->
       <section id="how" class="section">
         <h2>How it works</h2>
         <div class="grid">
@@ -438,7 +315,6 @@
         </div>
       </section>
 
-      <!-- Footer -->
       <footer class="footer">
         <div>© <span id="year"></span> trAgent</div>
         <div style="display:flex;gap:14px;flex-wrap:wrap">
@@ -452,44 +328,114 @@
     <script>
       document.getElementById("year").textContent = new Date().getFullYear();
 
-      let map;
-      let userMarker;
+      let map = null;
+      let userMarker = null;
+      let accuracyCircle = null;
       let nearbyMarkers = [];
-      let lastPos;
+      let mapsReady = false;
+      let pendingPos = null; // holds position if maps loads after geo fires
+
+      function setStatus(msg, isLive) {
+        const el = document.getElementById("map-status");
+        if (!el) return;
+        el.textContent = msg;
+        el.classList.toggle("live", !!isLive);
+      }
+
+      // defined on window before the script tag is injected so the callback always exists
+      window.__initTragentMap = function () {
+        const defaultCenter = pendingPos || { lat: 25.9017, lng: -97.4975 };
+
+        map = new google.maps.Map(document.getElementById("map"), {
+          center: defaultCenter,
+          zoom: 14,
+          disableDefaultUI: false,
+          zoomControl: true,
+          mapTypeControl: false,
+          streetViewControl: false,
+          fullscreenControl: true,
+          gestureHandling: "greedy",
+        });
+
+        userMarker = new google.maps.Marker({
+          position: defaultCenter,
+          map,
+          title: "You are here",
+          icon: {
+            path: google.maps.SymbolPath.CIRCLE,
+            scale: 10,
+            fillColor: "#ff6a00",
+            fillOpacity: 1,
+            strokeColor: "#ffffff",
+            strokeWeight: 3,
+          },
+          zIndex: 999,
+        });
+
+        accuracyCircle = new google.maps.Circle({
+          map,
+          center: defaultCenter,
+          radius: 80, // updated when real location arrives
+          fillColor: "#ff6a00",
+          fillOpacity: 0.08,
+          strokeColor: "#ff6a00",
+          strokeOpacity: 0.25,
+          strokeWeight: 1,
+        });
+
+        mapsReady = true;
+
+        if (pendingPos) {
+          applyPosition(pendingPos.lat, pendingPos.lng, pendingPos.accuracy);
+          pendingPos = null;
+        } else {
+          setStatus("📍 Waiting for location…");
+        }
+      };
 
       async function loadMapsApi() {
         try {
+          setStatus("🗺 Loading map…");
           const r = await fetch("/config/maps");
-          if (!r.ok) return;
+          if (!r.ok) { setStatus("⚠️ Map config unavailable"); return; }
           const data = await r.json();
           const key = data.google_maps_js_api_key;
-          if (!key) return;
+          if (!key) { setStatus("⚠️ No Maps API key"); return; }
 
-          if (window.google?.maps) return;
-
-          window.__initTragentMap = () => {
-            const start = lastPos || { lat: 25.9017, lng: -97.4975 };
-            map = new google.maps.Map(document.getElementById("map"), {
-              center: start,
-              zoom: 14,
-              disableDefaultUI: true,
-              gestureHandling: "greedy",
-            });
-            userMarker = new google.maps.Marker({
-              position: start,
-              map,
-              title: "You",
-            });
-          };
+          // don't inject twice
+          if (window.google?.maps) { window.__initTragentMap(); return; }
 
           const s = document.createElement("script");
           s.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(key)}&callback=__initTragentMap`;
           s.async = true;
           s.defer = true;
+          s.onerror = () => setStatus("⚠️ Maps failed to load");
           document.head.appendChild(s);
         } catch {
+          setStatus("⚠️ Could not load map");
+        }
+      }
+
+      function applyPosition(lat, lng, accuracy) {
+        if (!mapsReady || !map) {
+          // buffer it, map will pick it up on init
+          pendingPos = { lat, lng, accuracy };
           return;
         }
+
+        const pos = { lat, lng };
+
+        map.panTo(pos);
+        map.setZoom(15);
+
+        userMarker.setPosition(pos);
+
+        if (accuracyCircle) {
+          accuracyCircle.setCenter(pos);
+          accuracyCircle.setRadius(Math.min(accuracy || 80, 500));
+        }
+
+        setStatus("🟢 Live location", true);
       }
 
       const cards = [
@@ -499,82 +445,70 @@
       ];
 
       const fallbackPlaces = [
-        { name: "Local café nearby", address: "Popular spot in your area", rating: 4.7 },
-        { name: "A great park", address: "Trails and open space", rating: 4.6 },
-        { name: "Top local food", address: "Neighborhood favorite", rating: 4.8 },
+        { name: "Local café nearby",  address: "Popular spot in your area", rating: 4.7 },
+        { name: "A great park",       address: "Trails and open space",     rating: 4.6 },
+        { name: "Top local food",     address: "Neighborhood favorite",     rating: 4.8 },
       ];
 
       function setCard(cardId, place) {
         const el = document.getElementById(cardId);
         if (!el) return;
         const title = el.querySelector("h3");
-        const meta = el.querySelector(".meta");
+        const meta  = el.querySelector(".meta");
         if (title) title.textContent = place?.name || "No results nearby";
         if (meta) {
-          const rating = place?.rating ? `${place.rating}★` : "";
+          const rating  = place?.rating  ? `${place.rating}★` : "";
           const address = place?.address || "";
           meta.textContent = [address, rating].filter(Boolean).join(" • ") || "";
         }
       }
 
-      function setFallback(reason) {
-        cards.forEach((c, idx) => setCard(c.id, fallbackPlaces[idx]));
-      }
-
-      function setUserOnMap(lat, lng) {
-        lastPos = { lat, lng };
-        if (!map || !window.google?.maps) return;
-        const pos = { lat, lng };
-        map.setCenter(pos);
-        if (userMarker) {
-          userMarker.setPosition(pos);
-        } else {
-          userMarker = new google.maps.Marker({ position: pos, map, title: "You" });
-        }
+      function setFallback() {
+        cards.forEach((c, i) => setCard(c.id, fallbackPlaces[i]));
       }
 
       async function updateNearbyMarkers(lat, lng) {
-        if (!map || !window.google?.maps) return;
+        if (!mapsReady || !map) return;
         try {
-          const r = await fetch(
-            `/places/nearby?lat=${encodeURIComponent(lat)}&lng=${encodeURIComponent(lng)}&radius=1500`
-          );
+          const r = await fetch(`/places/nearby?lat=${lat}&lng=${lng}&radius=1500`);
           if (!r.ok) return;
           const data = await r.json();
           const results = (data.results || []).slice(0, 10);
 
-          nearbyMarkers.forEach((m) => m.setMap(null));
+          nearbyMarkers.forEach(m => m.setMap(null));
           nearbyMarkers = results
-            .filter((p) => typeof p.lat === "number" && typeof p.lng === "number")
-            .map((p) =>
+            .filter(p => typeof p.lat === "number" && typeof p.lng === "number")
+            .map(p =>
               new google.maps.Marker({
                 position: { lat: p.lat, lng: p.lng },
                 map,
                 title: p.name,
+                icon: {
+                  path: google.maps.SymbolPath.CIRCLE,
+                  scale: 7,
+                  fillColor: "#ff9a3d",
+                  fillOpacity: 0.9,
+                  strokeColor: "#ffffff",
+                  strokeWeight: 2,
+                },
               })
             );
-        } catch {
-          return;
-        }
+        } catch { /* silent */ }
       }
 
       async function loadNearby(lat, lng) {
-        setUserOnMap(lat, lng);
+        applyPosition(lat, lng, 80);
         updateNearbyMarkers(lat, lng);
 
         await Promise.all(
           cards.map(async (c) => {
             try {
               const r = await fetch(
-                `/places/nearby?lat=${encodeURIComponent(lat)}&lng=${encodeURIComponent(lng)}&keyword=${encodeURIComponent(c.keyword)}&radius=3500`
+                `/places/nearby?lat=${lat}&lng=${lng}&keyword=${encodeURIComponent(c.keyword)}&radius=3500`
               );
-              if (!r.ok) {
-                if (r.status === 500) setFallback("Set GOOGLE_MAPS_API_KEY to enable nearby")
-                return;
-              }
+              if (!r.ok) { if (r.status === 500) setFallback(); return; }
               const data = await r.json();
-              const first = (data.results || [])[0];
-              setCard(c.id, first);
+              setCard(c.id, (data.results || [])[0]);
             } catch {
               setCard(c.id, null);
             }
@@ -582,17 +516,21 @@
         );
       }
 
+      // load map right away, don't wait for geo
+      loadMapsApi();
+
       if ("geolocation" in navigator) {
-        loadMapsApi();
         navigator.geolocation.watchPosition(
           (pos) => loadNearby(pos.coords.latitude, pos.coords.longitude),
-          () => {
-            setFallback("Enable location to see nearby picks");
+          (err) => {
+            setStatus("📍 Location denied — showing Brownsville");
+            setFallback();
           },
-          { enableHighAccuracy: true, maximumAge: 15000, timeout: 10000 }
+          { enableHighAccuracy: true, maximumAge: 15000, timeout: 15000 }
         );
       } else {
-        setFallback("Location unavailable");
+        setStatus("📍 Location unavailable");
+        setFallback();
       }
     </script>
   
