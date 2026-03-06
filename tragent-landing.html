@@ -501,13 +501,17 @@
       function setUserOnMap(lat, lng) {
         lastPos = { lat, lng };
         if (!map || !window.google?.maps) return;
+
         const pos = { lat, lng };
         map.setCenter(pos);
+
         if (userMarker) {
           userMarker.setPosition(pos);
         } else {
           userMarker = new google.maps.Marker({ position: pos, map, title: "You" });
-        }
+        }}
+        
+
       function setFallback() {
         cards.forEach((c, i) => setCard(c.id, fallbackPlaces[i]));
       }
@@ -615,4 +619,5 @@
     </script>
   
   </body>
+
 </html>
