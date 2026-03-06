@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>trAgent Planner</title>
+  <style>
+    :root{
+      --bg:#ffffff;
+      --ink:#0b1220;
+      --muted:rgba(11,18,32,.65);
+      --border:rgba(11,18,32,.12);
+      --card:rgba(255,255,255,.92);
+      --orange:#ff6a00;
+      --orange2:#ff9a3d;
+      --shadow:0 16px 40px rgba(11,18,32,.10);
+      --radius:16px;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      font-family: system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;
+      color:var(--ink);
+      background:
+        radial-gradient(900px 560px at 14% 6%, rgba(255,154,61,.16), transparent 62%),
+        radial-gradient(800px 520px at 88% 12%, rgba(255,106,0,.10), transparent 64%),
+        radial-gradient(900px 600px at 50% 110%, rgba(255,183,3,.10), transparent 62%),
+        var(--bg);
+    }
+    header{
+      display:flex;align-items:center;justify-content:space-between;
+      padding:16px 22px;
+    }
+    .brand{display:flex;gap:10px;align-items:center;font-weight:900;letter-spacing:-.02em}
+    .brandDot{
+      width:34px;height:34px;border-radius:12px;
+      background:linear-gradient(135deg,var(--orange),var(--orange2));
+      box-shadow:0 18px 50px rgba(255,106,0,.25);
+    }
+    .topActions a{color:var(--muted);text-decoration:none;font-weight:700}
+    .wrap{
+      max-width:1200px;margin:0 auto;padding:0 16px 28px;
+    }
+    .layout{
+      display:grid;
+      grid-template-columns: 360px 1fr;
+      gap:16px;
+      align-items:start;
+    }
+    @media (max-width: 980px){
+      .layout{grid-template-columns:1fr}
+      .sticky{position:static;height:auto}
+    }
+
+    /* LEFT: itinerary notepad */
+    .panel{
+      background:var(--card);
+      border:1px solid var(--border);
+      border-radius:var(--radius);
+      box-shadow:var(--shadow);
+      overflow:hidden;
+    }
+    .sticky{
+      position:sticky;
+      top:16px;
+      height:calc(100vh - 32px);
+      display:flex;
+      flex-direction:column;
+    }
+    .panelHead{
+      padding:14px 14px 10px;
+      border-bottom:1px solid var(--border);
+      background:rgba(255,255,255,.9);
+    }
+    .panelHead h2{margin:0;font-size:16px}
+    .panelHead .sub{margin-top:4px;color:var(--muted);font-size:13px}
+    .dayRow{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+    .dayBtn{
+      padding:8px 12px;border-radius:999px;
+      border:1px solid var(--border);
+      background:white;
+      font-weight:700;font-size:13px;cursor:pointer;
+    }
+    .dayBtn.active{background:var(--ink);color:white;border-color:var(--ink)}
+    .list{
+      padding:12px;
+      overflow:auto;
+      flex:1;
+    }
+    .empty{
+      color:var(--muted);
+      border:1px dashed var(--border);
+      border-radius:12px;
+      padding:12px;
+      font-size:13px;
+    }
+    .item{
+      border:1px solid var(--border);
+      border-radius:14px;
+      padding:10px 10px;
+      background:white;
+      margin-bottom:10px;
+      display:flex;gap:10px;align-items:flex-start;
+    }
+    .num{
+      width:26px;height:26px;border-radius:50%;
+      background:linear-gradient(135deg,var(--orange),var(--orange2));
+      color:white;font-weight:900;
+      display:flex;align-items:center;justify-content:center;
+      flex:0 0 auto;
+      margin-top:2px;
+      font-size:13px;
+    }
+    .meta{flex:1;min-width:0}
+    .name{font-weight:800;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .addr{color:var(--muted);font-size:12px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .itemActions{display:flex;gap:6px}
+    .iconBtn{
+      border:none;background:transparent;cursor:pointer;
+      color:var(--muted);font-size:16px;line-height:1;
+      padding:6px;border-radius:10px;
+    }
+    .iconBtn:hover{background:rgba(11,18,32,.06);color:var(--ink)}
+    .panelFoot{
+      padding:12px;
+      border-top:1px solid var(--border);
+      background:rgba(255,255,255,.9);
+    }
+    .primary{
+      width:100%;
+      border:none;
+      padding:12px 14px;
+      border-radius:14px;
+      font-weight:900;
+      color:white;
+      background:linear-gradient(135deg,var(--orange),var(--orange2));
+      cursor:pointer;
+      box-shadow:0 18px 50px rgba(255,106,0,.20);
+    }
+    .primary:disabled{opacity:.55;cursor:not-allowed}
+
+    /* RIGHT: search + results */
+    .searchCard{
+      background:var(--card);
+      border:1px solid var(--border);
+      border-radius:var(--radius);
+      box-shadow:var(--shadow);
+      padding:14px;
+      margin-bottom:14px;
+    }
+    .searchRow{
+      display:flex;gap:10px;flex-wrap:wrap;
+      align-items:center;
+    }
+    .searchRow input{
+      flex:1;
+      min-width:220px;
+      padding:12px 12px;
+      border-radius:14px;
+      border:1px solid var(--border);
+      font-size:14px;
+      outline:none;
+      background:white;
+    }
+    .searchRow button{
+      border:none;
+      padding:12px 14px;
+      border-radius:14px;
+      font-weight:900;
+      cursor:pointer;
+      background:var(--ink);
+      color:white;
+    }
+    .hint{color:var(--muted);font-size:12px;margin-top:8px}
+    .results{display:flex;flex-direction:column;gap:12px}
+    .card{
+      background:var(--card);
+      border:1px solid var(--border);
+      border-radius:18px;
+      box-shadow:0 10px 26px rgba(11,18,32,.08);
+      padding:14px;
+      display:flex;
+      gap:12px;
+      align-items:flex-start;
+    }
+    .thumb{
+      width:92px;height:92px;border-radius:14px;
+      background:rgba(11,18,32,.06);
+      flex:0 0 auto;
+      display:flex;align-items:center;justify-content:center;
+      color:var(--muted);font-weight:800;font-size:12px;
+    }
+    .cardBody{flex:1;min-width:0}
+    .cardTitle{font-weight:900}
+    .cardAddr{color:var(--muted);font-size:13px;margin-top:4px}
+    .cardRow{display:flex;gap:10px;align-items:center;margin-top:8px;flex-wrap:wrap}
+    .pill{
+      font-size:12px;font-weight:800;
+      padding:6px 10px;border-radius:999px;
+      border:1px solid var(--border);background:white;color:var(--muted);
+    }
+    .addBtn{
+      margin-left:auto;
+      border:none;
+      padding:10px 12px;
+      border-radius:14px;
+      font-weight:900;
+      cursor:pointer;
+      background:linear-gradient(135deg,var(--orange),var(--orange2));
+      color:white;
+    }
+    .addBtn[disabled]{opacity:.55;cursor:not-allowed}
+  </style>
+</head>
+
+<body>
+  <header>
+    <div class="brand">
+      <div class="brandDot" aria-hidden="true"></div>
+      <div>trAgent Planner</div>
+    </div>
+    <div class="topActions">
+      <a href="/">Back to home</a>
+    </div>
+  </header>
+
+  <div class="wrap">
+    <div class="layout">
+      <!-- LEFT: Itinerary notepad -->
+      <div class="panel sticky">
+        <div class="panelHead">
+          <h2>Itinerary Notepad</h2>
+          <div class="sub">
+            Select a day, then add places from the results.
+          </div>
+
+          <div class="dayRow" id="dayRow"></div>
+        </div>
+
+        <div class="list" id="itinList">
+          <div class="empty">No places added yet. Search on the right, then click <b>Add to Trip</b>.</div>
+        </div>
+
+        <div class="panelFoot">
+          <button class="primary" id="saveBtn" onclick="saveTrip()" disabled>Save Trip (demo)</button>
+        </div>
+      </div>
+
+      <!-- RIGHT: Search + results -->
+      <div>
+        <div class="searchCard">
+          <div class="searchRow">
+            <input id="q" placeholder="Search places (e.g., 'parks in San Antonio' or 'museums Brownsville')" />
+            <button onclick="runSearch()">Search</button>
+          </div>
+          <div class="hint">Powered by your backend <code>/places/search</code>. Add results to the notepad on the left.</div>
+        </div>
+
+        <div class="results" id="results"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Use same-origin since this page is served by FastAPI
+    const API_BASE = '';
+
+    // Simple trip builder state (front-end only for now)
+    const tripState = {
+      destination: '',
+      days: 3,
+      activeDay: 1,
+      itemsByDay: { 1: [], 2: [], 3: [] }
+    };
+
+    // Build day buttons
+    function initDays() {
+      const row = document.getElementById('dayRow');
+      row.innerHTML = '';
+      for (let d = 1; d <= tripState.days; d++) {
+        const btn = document.createElement('button');
+        btn.className = 'dayBtn' + (d === tripState.activeDay ? ' active' : '');
+        btn.textContent = 'Day ' + d;
+        btn.onclick = () => { tripState.activeDay = d; renderDays(); renderItinerary(); };
+        row.appendChild(btn);
+      }
+    }
+
+    function renderDays() {
+      document.querySelectorAll('.dayBtn').forEach((b, idx) => {
+        b.classList.toggle('active', idx + 1 === tripState.activeDay);
+      });
+    }
+
+    function isAdded(placeId) {
+      return tripState.itemsByDay[tripState.activeDay].some(x => x.place_id === placeId);
+    }
+
+    // LEFT panel render
+    function renderItinerary() {
+      const list = document.getElementById('itinList');
+      const items = tripState.itemsByDay[tripState.activeDay];
+
+      const saveBtn = document.getElementById('saveBtn');
+      const totalCount = Object.values(tripState.itemsByDay).reduce((acc, arr) => acc + arr.length, 0);
+      saveBtn.disabled = totalCount === 0;
+
+      if (!items.length) {
+        list.innerHTML = `<div class="empty">No places added for Day ${tripState.activeDay}. Add from the right.</div>`;
+        return;
+      }
+
+      list.innerHTML = '';
+      items.forEach((p, idx) => {
+        const div = document.createElement('div');
+        div.className = 'item';
+        div.innerHTML = `
+          <div class="num">${idx + 1}</div>
+          <div class="meta">
+            <div class="name" title="${escapeHtml(p.name)}">${escapeHtml(p.name)}</div>
+            <div class="addr" title="${escapeHtml(p.address || '')}">${escapeHtml(p.address || '')}</div>
+          </div>
+          <div class="itemActions">
+            <button class="iconBtn" title="Remove" onclick="removeFromTrip('${p.place_id}')">🗑️</button>
+          </div>
+        `;
+        list.appendChild(div);
+      });
+    }
+
+    function addToTrip(place) {
+      if (isAdded(place.place_id)) return;
+      tripState.itemsByDay[tripState.activeDay].push(place);
+      renderItinerary();
+      // Update result buttons (so it shows Added)
+      renderResults(lastResults);
+    }
+
+    function removeFromTrip(placeId) {
+      tripState.itemsByDay[tripState.activeDay] =
+        tripState.itemsByDay[tripState.activeDay].filter(x => x.place_id !== placeId);
+      renderItinerary();
+      renderResults(lastResults);
+    }
+
+    // RIGHT results render
+    let lastResults = [];
+    function renderResults(results) {
+      lastResults = results || [];
+      const root = document.getElementById('results');
+      root.innerHTML = '';
+
+      if (!lastResults.length) {
+        root.innerHTML = `<div class="searchCard" style="box-shadow:none">No results yet. Try a search.</div>`;
+        return;
+      }
+
+      lastResults.forEach(p => {
+        const added = isAdded(p.place_id);
+        const card = document.createElement('div');
+        card.className = 'card';
+        card.innerHTML = `
+          <div class="thumb">Photo</div>
+          <div class="cardBody">
+            <div class="cardTitle">${escapeHtml(p.name || 'Unknown')}</div>
+            <div class="cardAddr">${escapeHtml(p.address || '')}</div>
+            <div class="cardRow">
+              ${p.rating ? `<span class="pill">⭐ ${escapeHtml(String(p.rating))}</span>` : ``}
+              <span class="pill">Day ${tripState.activeDay}</span>
+              <button class="addBtn" ${added ? 'disabled' : ''} onclick='addToTrip(${JSON.stringify(p).replace(/'/g, "\\'")})'>
+                ${added ? 'Added ✅' : 'Add to Trip'}
+              </button>
+            </div>
+          </div>
+        `;
+        root.appendChild(card);
+      });
+    }
+
+    async function runSearch() {
+      const q = document.getElementById('q').value.trim();
+      if (!q) return;
+
+      const res = await fetch(API_BASE + '/places/search?q=' + encodeURIComponent(q));
+      if (!res.ok) {
+        renderResults([]);
+        alert('Search failed. Check GOOGLE_MAPS_API_KEY and backend logs.');
+        return;
+      }
+      const data = await res.json();
+      renderResults(data.results || []);
+    }
+
+    // Demo save (backend save can be wired later)
+    async function saveTrip() {
+      alert('For demo: Itinerary is building correctly on the left.\nNext step: connect Save Trip to /trips + /trips/{id}/items.');
+    }
+
+    // helper
+    function escapeHtml(str) {
+      return String(str)
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#039;');
+    }
+
+    initDays();
+    renderItinerary();
+    renderResults([]);
+  </script>
+</body>
+</html>
