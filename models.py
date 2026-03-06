@@ -1,10 +1,37 @@
-from sqlalchemy import Column, ForeignKey, Integer, String, Text, Float
+from datetime import datetime, timezone
+
+from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, Text, Float
 from database import Base
+
+
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+class User(Base):
+    __tablename__ = 'users'
+
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String, unique=True, nullable=False, index=True)
+    password_salt = Column(String, nullable=False)
+    password_hash = Column(String, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
+
+
+class SessionToken(Base):
+    __tablename__ = 'session_tokens'
+
+    id = Column(Integer, primary_key=True, index=True)
+    token = Column(String, unique=True, nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=False, index=True)
+    created_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
 
 class Trip(Base):
     __tablename__ = 'trips'
 
     id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=True, index=True)
     title= Column(String, nullable=False)
     destination = Column(String, nullable=False)
 
@@ -28,4 +55,5 @@ class TripItem(Base):
     lng = Column(Float,nullable=True)
     address = Column(String, nullable=True)
     rating = Column(Float, nullable=True)
-    
+
+    completed = Column(Integer, nullable=False, default=0)

@@ -1,4 +1,10 @@
-from fastapi import FastAPI, Depends, HTTPException
+from datetime import datetime, timedelta, timezone
+import base64
+import hashlib
+import hmac
+import secrets
+
+from fastapi import FastAPI, Depends, HTTPException, Header
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from typing import List, Annotated, Optional
@@ -30,6 +36,11 @@ def landing_page():
 @app.get("/itinerary")
 def itinerary_page():
     return FileResponse("itinerary_page.html", media_type="text/html")
+
+
+@app.get("/login")
+def login_page():
+    return FileResponse("login.html", media_type="text/html")
 
 #so frontend can call API
 app.add_middleware(
@@ -63,6 +74,15 @@ class TripCreate(BaseModel):
     title: str = Field(min_length=1, max_length=200)
     destination: str = Field(min_length=1, max_length=200)
 
+
+class AuthPayload(BaseModel):
+    email: str = Field(min_length=3, max_length=320)
+    password: str = Field(min_length=8, max_length=200)
+
+
+class SessionResponse(BaseModel):
+    token: str
+
 class TripItemCreate(BaseModel):
     day: int = Field(ge=1, le=30)
     place_id: str
@@ -73,6 +93,11 @@ class TripItemCreate(BaseModel):
     lng: Optional[float] = None
     address: Optional[str] = None
     rating: Optional[float] = None
+
+
+class TripItemUpdate(BaseModel):
+    notes: Optional[str] = None
+    completed: Optional[bool] = None
 
 class ItineraryRequest(BaseModel):
     destination: str
@@ -87,10 +112,117 @@ class ReorderPayload(BaseModel):
 def health():
     return {"status": "ok"}
 
+
+def _hash_password(password: str, salt_b64: str) -> str:
+    salt = base64.b64decode(salt_b64.encode("utf-8"))
+    dk = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, 210_000)
+    return base64.b64encode(dk).decode("utf-8")
+
+
+def _new_salt_b64() -> str:
+    return base64.b64encode(secrets.token_bytes(16)).decode("utf-8")
+
+
+def _parse_bearer(authorization: str | None) -> str | None:
+    if not authorization:
+        return None
+    parts = authorization.split(" ", 1)
+    if len(parts) != 2:
+        return None
+    scheme, token = parts
+    if scheme.lower() != "bearer" or not token:
+        return None
+    return token
+
+
+def get_current_user(
+    db: db_dependency,
+    authorization: str | None = Header(default=None),
+) -> models.User:
+    token = _parse_bearer(authorization)
+    if not token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    now = datetime.now(timezone.utc)
+    session = (
+        db.query(models.SessionToken)
+        .filter(models.SessionToken.token == token)
+        .first()
+    )
+    if not session or session.expires_at <= now:
+        raise HTTPException(status_code=401, detail="Session expired")
+
+    user = db.get(models.User, session.user_id)
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid session")
+    return user
+
+
+@app.post("/auth/register", response_model=SessionResponse)
+def auth_register(payload: AuthPayload, db: db_dependency):
+    existing = db.query(models.User).filter(models.User.email == payload.email.lower()).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Email already registered")
+
+    salt_b64 = _new_salt_b64()
+    password_hash = _hash_password(payload.password, salt_b64)
+    user = models.User(email=payload.email.lower(), password_salt=salt_b64, password_hash=password_hash)
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+
+    token = secrets.token_urlsafe(32)
+    session = models.SessionToken(
+        token=token,
+        user_id=user.id,
+        expires_at=datetime.now(timezone.utc) + timedelta(days=30),
+    )
+    db.add(session)
+    db.commit()
+
+    return {"token": token}
+
+
+@app.post("/auth/login", response_model=SessionResponse)
+def auth_login(payload: AuthPayload, db: db_dependency):
+    user = db.query(models.User).filter(models.User.email == payload.email.lower()).first()
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+
+    expected = _hash_password(payload.password, user.password_salt)
+    if not hmac.compare_digest(expected, user.password_hash):
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+
+    token = secrets.token_urlsafe(32)
+    session = models.SessionToken(
+        token=token,
+        user_id=user.id,
+        expires_at=datetime.now(timezone.utc) + timedelta(days=30),
+    )
+    db.add(session)
+    db.commit()
+    return {"token": token}
+
+
+@app.post("/auth/logout")
+def auth_logout(db: db_dependency, authorization: str | None = Header(default=None)):
+    token = _parse_bearer(authorization)
+    if not token:
+        return {"status": "ok"}
+
+    db.query(models.SessionToken).filter(models.SessionToken.token == token).delete()
+    db.commit()
+    return {"status": "ok"}
+
+
+@app.get("/me")
+def me(user: models.User = Depends(get_current_user)):
+    return {"id": user.id, "email": user.email}
+
 #DB--Trips
 @app.post("/trips")
-def create_trip(payload: TripCreate, db: db_dependency):
-    trip = models.Trip(title=payload.title, destination=payload.destination)
+def create_trip(payload: TripCreate, db: db_dependency, user: models.User = Depends(get_current_user)):
+    trip = models.Trip(user_id=user.id, title=payload.title, destination=payload.destination)
     db.add(trip)
     db.commit()
     db.refresh(trip)
@@ -98,8 +230,8 @@ def create_trip(payload: TripCreate, db: db_dependency):
 
 
 @app.get("/trips")
-def list_trips(db: db_dependency):
-    trips = db.query(models.Trip).all()
+def list_trips(db: db_dependency, user: models.User = Depends(get_current_user)):
+    trips = db.query(models.Trip).filter(models.Trip.user_id == user.id).all()
     return [
         {'id': t.id, 'title': t.title, 'destination': t.destination}
         for t in trips
@@ -107,10 +239,12 @@ def list_trips(db: db_dependency):
 
 
 @app.post("/trips/{trip_id}/items")
-def add_trip_item(trip_id: int, payload: TripItemCreate, db: db_dependency):
+def add_trip_item(trip_id: int, payload: TripItemCreate, db: db_dependency, user: models.User = Depends(get_current_user)):
     trip = db.get(models.Trip, trip_id)
     if not trip:
         raise HTTPException(status_code=404, detail="Trip not found")
+    if trip.user_id != user.id:
+        raise HTTPException(status_code=403, detail="Forbidden")
 
     #this is added to assist with the positioning of the items
     last_pos = (
@@ -141,20 +275,28 @@ def add_trip_item(trip_id: int, payload: TripItemCreate, db: db_dependency):
     db.commit()
     db.refresh(item)
     return {
-    "id": item.id,
-    "trip_id": item.trip_id,
-    "day": item.day,
-    "position": item.position,
-    "place_id": item.place_id,
-    "name": item.name
-}
+        "id": item.id,
+        "trip_id": item.trip_id,
+        "day": item.day,
+        "position": item.position,
+        "place_id": item.place_id,
+        "name": item.name,
+        "notes": item.notes,
+        "completed": bool(item.completed),
+        "lat": item.lat,
+        "lng": item.lng,
+        "address": item.address,
+        "rating": item.rating,
+    }
 
 
 @app.get("/trips/{trip_id}")
-def get_trip(trip_id: int, db: db_dependency):
+def get_trip(trip_id: int, db: db_dependency, user: models.User = Depends(get_current_user)):
     trip = db.get(models.Trip, trip_id)
     if not trip:
         raise HTTPException(status_code=404, detail="Trip not found")
+    if trip.user_id != user.id:
+        raise HTTPException(status_code=403, detail="Forbidden")
 
     items = (
         db.query(models.TripItem)
@@ -167,16 +309,30 @@ def get_trip(trip_id: int, db: db_dependency):
         "title": trip.title,
         "destination": trip.destination,
         "items": [
-            {"id": i.id, "day": i.day, "position": i.position, "place_id": i.place_id, "name": i.name, "notes": i.notes}
+            {
+                "id": i.id,
+                "day": i.day,
+                "position": i.position,
+                "place_id": i.place_id,
+                "name": i.name,
+                "notes": i.notes,
+                "completed": bool(i.completed),
+                "lat": i.lat,
+                "lng": i.lng,
+                "address": i.address,
+                "rating": i.rating,
+            }
             for i in items
         ],
     }
 
 @app.delete('/trips/{trip_id}')
-def delete_trip(trip_id: int, db: db_dependency):
+def delete_trip(trip_id: int, db: db_dependency, user: models.User = Depends(get_current_user)):
     trip = db.get(models.Trip, trip_id)
     if not trip:
         raise HTTPException(status_code=404, detail = 'Trip not found')
+    if trip.user_id != user.id:
+        raise HTTPException(status_code=403, detail="Forbidden")
     #delete child items first to avoid fk issues.
     db.query(models.TripItem).filter(models.TripItem.trip_id == trip_id).delete()
     db.delete(trip)
@@ -184,18 +340,70 @@ def delete_trip(trip_id: int, db: db_dependency):
     return {'status': 'deleted', 'trip_id':trip_id}
 
 @app.delete('/trips/{trip_id}/items/{item_id}')
-def delete_trip_item(trip_id: int, item_id: int, db: db_dependency):
+def delete_trip_item(trip_id: int, item_id: int, db: db_dependency, user: models.User = Depends(get_current_user)):
     item = db.get(models.TripItem, item_id)
 
     if not item or item.trip_id != trip_id:
         raise HTTPException(status_code=404, detail='Item not found')
+
+    trip = db.get(models.Trip, trip_id)
+    if not trip or trip.user_id != user.id:
+        raise HTTPException(status_code=403, detail="Forbidden")
     
     db.delete(item)
     db.commit()
     return{'status': 'deleted', 'item_id':item_id}
 
+
+@app.patch('/trips/{trip_id}/items/{item_id}')
+def update_trip_item(
+    trip_id: int,
+    item_id: int,
+    payload: TripItemUpdate,
+    db: db_dependency,
+    user: models.User = Depends(get_current_user),
+):
+    trip = db.get(models.Trip, trip_id)
+    if not trip:
+        raise HTTPException(status_code=404, detail='Trip not found')
+    if trip.user_id != user.id:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    item = db.get(models.TripItem, item_id)
+    if not item or item.trip_id != trip_id:
+        raise HTTPException(status_code=404, detail='Item not found')
+
+    updates = payload.model_dump(exclude_unset=True)
+    if 'notes' in updates:
+        item.notes = updates['notes']
+    if 'completed' in updates:
+        item.completed = 1 if updates['completed'] else 0
+    db.commit()
+    db.refresh(item)
+    return {
+        'id': item.id,
+        'trip_id': item.trip_id,
+        'day': item.day,
+        'position': item.position,
+        'place_id': item.place_id,
+        'name': item.name,
+        'notes': item.notes,
+        'completed': bool(item.completed),
+    }
+
 @app.put("/trips/{trip_id}/days/{day}/reorder")
-def reorder_day_items(trip_id: int, day: int, payload: ReorderPayload, db: db_dependency):
+def reorder_day_items(
+    trip_id: int,
+    day: int,
+    payload: ReorderPayload,
+    db: db_dependency,
+    user: models.User = Depends(get_current_user),
+):
+    trip = db.get(models.Trip, trip_id)
+    if not trip:
+        raise HTTPException(status_code=404, detail='Trip not found')
+    if trip.user_id != user.id:
+        raise HTTPException(status_code=403, detail="Forbidden")
     items = (
         db.query(models.TripItem)
         .filter(models.TripItem.trip_id == trip_id, models.TripItem.day == day)
@@ -206,6 +414,9 @@ def reorder_day_items(trip_id: int, day: int, payload: ReorderPayload, db: db_de
     for item_id in payload.ordered_item_ids:
         if item_id not in items_by_id:
             raise HTTPException(status_code=400, detail=f'Item {item_id} not found in this trip/day')
+
+    for idx, item_id in enumerate(payload.ordered_item_ids, start=1):
+        items_by_id[item_id].position = idx
 
     db.commit()
 

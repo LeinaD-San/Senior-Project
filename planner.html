@@ -38,6 +38,27 @@
       box-shadow:0 18px 50px rgba(255,106,0,.25);
     }
     .topActions a{color:var(--muted);text-decoration:none;font-weight:700}
+    .topActions a:hover{color:var(--ink)}
+    .topActions button{border:none;background:transparent;color:var(--muted);font-weight:800;cursor:pointer}
+    .topActions button:hover{color:var(--ink)}
+
+    .savedCard{
+      background:var(--card);
+      border:1px solid var(--border);
+      border-radius:var(--radius);
+      box-shadow:var(--shadow);
+      padding:14px;
+      margin-bottom:14px;
+    }
+    .savedTitle{font-weight:900}
+    .savedList{margin-top:10px;display:flex;flex-direction:column;gap:10px}
+    .savedItem{display:flex;align-items:center;gap:10px;padding:10px 10px;border-radius:14px;border:1px solid var(--border);background:white}
+    .savedMeta{flex:1;min-width:0}
+    .savedName{font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .savedSub{margin-top:2px;color:var(--muted);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .savedBtn{border:1px solid var(--border);background:white;border-radius:12px;padding:8px 10px;font-weight:900;cursor:pointer}
+    .savedBtn:hover{background:rgba(11,18,32,.04)}
+    .danger{color:#b91c1c}
     .wrap{
       max-width:1200px;margin:0 auto;padding:0 16px 28px;
     }
@@ -221,6 +242,9 @@
     </div>
     <div class="topActions">
       <a href="/">Back to home</a>
+      <span style="padding:0 8px;color:rgba(11,18,32,.35)">|</span>
+      <a id="signInLink" href="/login?next=%2Fplanner">Sign in</a>
+      <button id="logoutBtn" type="button" onclick="logout()" style="display:none">Log out</button>
     </div>
   </header>
 
@@ -242,12 +266,17 @@
         </div>
 
         <div class="panelFoot">
-          <button class="primary" id="saveBtn" onclick="saveTrip()" disabled>Save Trip (demo)</button>
+          <button class="primary" id="saveBtn" onclick="saveTrip()" disabled>Save Trip</button>
         </div>
       </div>
 
       <!-- RIGHT: Search + results -->
       <div>
+        <div class="savedCard" id="savedTripsCard" style="display:none">
+          <div class="savedTitle">My Saved Trips</div>
+          <div class="savedList" id="savedTripsList"></div>
+        </div>
+
         <div class="searchCard">
           <div class="searchRow">
             <input id="q" placeholder="Search places (e.g., 'parks in San Antonio' or 'museums Brownsville')" />
@@ -265,13 +294,122 @@
     // Use same-origin since this page is served by FastAPI
     const API_BASE = '';
 
+    function getToken() {
+      return localStorage.getItem('tragent_token');
+    }
+
+    function setSignedInUi(signedIn) {
+      document.getElementById('signInLink').style.display = signedIn ? 'none' : '';
+      document.getElementById('logoutBtn').style.display = signedIn ? '' : 'none';
+      document.getElementById('savedTripsCard').style.display = signedIn ? '' : 'none';
+    }
+
+    async function authFetch(path, options = {}) {
+      const token = getToken();
+      const headers = { ...(options.headers || {}) };
+      if (token) headers.Authorization = `Bearer ${token}`;
+      const res = await fetch(path, { ...options, headers });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.detail || `Request failed: ${res.status}`);
+      return data;
+    }
+
+    async function logout() {
+      const token = getToken();
+      localStorage.removeItem('tragent_token');
+      setSignedInUi(false);
+      if (token) {
+        await fetch('/auth/logout', { method: 'POST', headers: { Authorization: `Bearer ${token}` } }).catch(() => {});
+      }
+    }
+
     // Simple trip builder state (front-end only for now)
     const tripState = {
       destination: '',
       days: 3,
       activeDay: 1,
-      itemsByDay: { 1: [], 2: [], 3: [] }
+      itemsByDay: { 1: [], 2: [], 3: [] },
+      currentTripId: null,
     };
+
+    function resetDays(newDays) {
+      tripState.days = newDays;
+      const nextItems = {};
+      for (let d = 1; d <= newDays; d++) {
+        nextItems[d] = tripState.itemsByDay[d] || [];
+      }
+      tripState.itemsByDay = nextItems;
+      if (tripState.activeDay > newDays) tripState.activeDay = 1;
+      initDays();
+      renderDays();
+      renderItinerary();
+      renderResults(lastResults);
+    }
+
+    async function loadSavedTrips() {
+      const token = getToken();
+      if (!token) return;
+      setSignedInUi(true);
+
+      const trips = await authFetch('/trips');
+      const list = document.getElementById('savedTripsList');
+      list.innerHTML = '';
+
+      if (!trips.length) {
+        list.innerHTML = '<div class="hint">No saved trips yet.</div>';
+        return;
+      }
+
+      trips.forEach((t) => {
+        const row = document.createElement('div');
+        row.className = 'savedItem';
+        row.innerHTML = `
+          <div class="savedMeta">
+            <div class="savedName">${escapeHtml(t.title)}</div>
+            <div class="savedSub">${escapeHtml(t.destination)}</div>
+          </div>
+          <button class="savedBtn" type="button">Open</button>
+          <button class="savedBtn danger" type="button">Delete</button>
+        `;
+
+        const buttons = row.querySelectorAll('button');
+        const openBtn = buttons[0];
+        const deleteBtn = buttons[1];
+
+        openBtn.addEventListener('click', async () => {
+          const trip = await authFetch(`/trips/${t.id}`);
+          const maxDay = Math.max(1, ...(trip.items || []).map((i) => i.day || 1));
+          tripState.destination = trip.destination || '';
+          tripState.activeDay = 1;
+          tripState.currentTripId = trip.id;
+          tripState.itemsByDay = {};
+          for (let d = 1; d <= maxDay; d++) tripState.itemsByDay[d] = [];
+          (trip.items || []).forEach((i) => {
+            if (!tripState.itemsByDay[i.day]) tripState.itemsByDay[i.day] = [];
+            tripState.itemsByDay[i.day].push({
+              id: i.id,
+              position: i.position,
+              place_id: i.place_id,
+              name: i.name,
+              address: i.address,
+              rating: i.rating,
+              lat: i.lat,
+              lng: i.lng,
+              notes: i.notes,
+              completed: i.completed,
+            });
+          });
+          resetDays(maxDay);
+        });
+
+        deleteBtn.addEventListener('click', async () => {
+          await authFetch(`/trips/${t.id}`, { method: 'DELETE' });
+          await loadSavedTrips();
+        });
+
+        list.appendChild(row);
+      });
+    }
 
     // Build day buttons
     function initDays() {
@@ -296,9 +434,30 @@
       return tripState.itemsByDay[tripState.activeDay].some(x => x.place_id === placeId);
     }
 
+    function persistEnabled() {
+      return !!(getToken() && tripState.currentTripId);
+    }
+
+    function sortDayItems(day) {
+      tripState.itemsByDay[day].sort((a, b) => (a.position || 0) - (b.position || 0));
+    }
+
+    async function persistReorder(day) {
+      if (!persistEnabled()) return;
+      sortDayItems(day);
+      const orderedIds = tripState.itemsByDay[day].map((i) => i.id).filter(Boolean);
+      if (!orderedIds.length) return;
+      await fetch(`/trips/${tripState.currentTripId}/days/${day}/reorder`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
+        body: JSON.stringify({ ordered_item_ids: orderedIds }),
+      }).catch(() => {});
+    }
+
     // LEFT panel render
     function renderItinerary() {
       const list = document.getElementById('itinList');
+      sortDayItems(tripState.activeDay);
       const items = tripState.itemsByDay[tripState.activeDay];
 
       const saveBtn = document.getElementById('saveBtn');
@@ -319,28 +478,90 @@
           <div class="meta">
             <div class="name" title="${escapeHtml(p.name)}">${escapeHtml(p.name)}</div>
             <div class="addr" title="${escapeHtml(p.address || '')}">${escapeHtml(p.address || '')}</div>
+            <div style="margin-top:8px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+              <label style="display:flex;gap:6px;align-items:center;font-size:12px;color:var(--muted);font-weight:800">
+                <input type="checkbox" ${p.completed ? 'checked' : ''} data-action="complete" data-id="${p.id || ''}" />
+                Completed
+              </label>
+              <textarea data-action="notes" data-id="${p.id || ''}" placeholder="Notes" style="width:100%;margin-top:6px;padding:8px 10px;border-radius:12px;border:1px solid var(--border);font-size:13px;" rows="1">${escapeHtml(p.notes || '')}</textarea>
+            </div>
           </div>
           <div class="itemActions">
+            <button class="iconBtn" title="Move up" onclick="moveItem(${tripState.activeDay}, ${idx}, -1)">⬆️</button>
+            <button class="iconBtn" title="Move down" onclick="moveItem(${tripState.activeDay}, ${idx}, 1)">⬇️</button>
             <button class="iconBtn" title="Remove" onclick="removeFromTrip('${p.place_id}')">🗑️</button>
           </div>
         `;
+
+        const completeEl = div.querySelector('input[data-action="complete"]');
+        if (completeEl) {
+          completeEl.addEventListener('change', async (e) => {
+            const checked = e.target.checked;
+            p.completed = checked;
+            if (persistEnabled() && p.id) {
+              await fetch(`/trips/${tripState.currentTripId}/items/${p.id}` , {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
+                body: JSON.stringify({ completed: checked }),
+              }).catch(() => {});
+            }
+          });
+        }
+
+        const notesEl = div.querySelector('textarea[data-action="notes"]');
+        if (notesEl) {
+          notesEl.addEventListener('blur', async (e) => {
+            const value = e.target.value;
+            p.notes = value;
+            if (persistEnabled() && p.id) {
+              await fetch(`/trips/${tripState.currentTripId}/items/${p.id}` , {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
+                body: JSON.stringify({ notes: value }),
+              }).catch(() => {});
+            }
+          });
+        }
+
         list.appendChild(div);
       });
     }
 
+    async function moveItem(day, index, delta) {
+      const items = tripState.itemsByDay[day];
+      const nextIndex = index + delta;
+      if (nextIndex < 0 || nextIndex >= items.length) return;
+      const tmp = items[index];
+      items[index] = items[nextIndex];
+      items[nextIndex] = tmp;
+      items.forEach((it, i) => { it.position = i + 1; });
+      renderItinerary();
+      await persistReorder(day);
+    }
+
     function addToTrip(place) {
       if (isAdded(place.place_id)) return;
-      tripState.itemsByDay[tripState.activeDay].push(place);
+      tripState.itemsByDay[tripState.activeDay].push({ ...place, completed: false, notes: '', position: tripState.itemsByDay[tripState.activeDay].length + 1 });
       renderItinerary();
       // Update result buttons (so it shows Added)
       renderResults(lastResults);
     }
 
-    function removeFromTrip(placeId) {
-      tripState.itemsByDay[tripState.activeDay] =
-        tripState.itemsByDay[tripState.activeDay].filter(x => x.place_id !== placeId);
+    async function removeFromTrip(placeId) {
+      const dayItems = tripState.itemsByDay[tripState.activeDay];
+      const item = dayItems.find((x) => x.place_id === placeId);
+      tripState.itemsByDay[tripState.activeDay] = dayItems.filter(x => x.place_id !== placeId);
+      tripState.itemsByDay[tripState.activeDay].forEach((it, idx) => { it.position = idx + 1; });
       renderItinerary();
       renderResults(lastResults);
+
+      if (persistEnabled() && item?.id) {
+        await fetch(`/trips/${tripState.currentTripId}/items/${item.id}`, {
+          method: 'DELETE',
+          headers: { Authorization: `Bearer ${getToken()}` },
+        }).catch(() => {});
+        await persistReorder(tripState.activeDay);
+      }
     }
 
     // RIGHT results render
@@ -393,7 +614,56 @@
 
     // Demo save (backend save can be wired later)
     async function saveTrip() {
-      alert('For demo: Itinerary is building correctly on the left.\nNext step: connect Save Trip to /trips + /trips/{id}/items.');
+      const token = getToken();
+      if (!token) {
+        window.location.href = '/login?next=%2Fplanner';
+        return;
+      }
+
+      const destination = tripState.destination || document.getElementById('q').value.trim() || 'Destination';
+      const title = `Trip to ${destination}`;
+
+      const resTrip = await fetch('/trips', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ title, destination }),
+      });
+      const trip = await resTrip.json().catch(() => ({}));
+      if (!resTrip.ok) {
+        window.location.href = '/login?next=%2Fplanner';
+        return;
+      }
+
+      tripState.currentTripId = trip.id;
+
+      for (const [dayStr, items] of Object.entries(tripState.itemsByDay)) {
+        const day = parseInt(dayStr);
+        for (const item of items) {
+          const resItem = await fetch(`/trips/${trip.id}/items`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+            body: JSON.stringify({
+              day,
+              place_id: item.place_id,
+              name: item.name,
+              notes: item.notes || '',
+              lat: item.lat,
+              lng: item.lng,
+              address: item.address,
+              rating: item.rating,
+            }),
+          });
+          const saved = await resItem.json().catch(() => ({}));
+          if (resItem.ok && saved.id) {
+            item.id = saved.id;
+            item.position = saved.position;
+          }
+        }
+      }
+
+      alert('Trip saved!');
+
+      await loadSavedTrips();
     }
 
     // helper
