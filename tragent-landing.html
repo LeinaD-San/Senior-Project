@@ -347,12 +347,12 @@
           </p>
 
           <div class="ctaRow">
-            <a class="btn primary" href="#discover">Discover nearby</a>
+            <button class="btn primary" type="button" id="discoverNearbyBtn">Discover nearby</button>
             <a class="btn" href="/planner">Plan a trip</a>
           </div>
 
           <div class="splitCtas" aria-label="Choose a path">
-            <a class="card" href="#discover">
+            <a class="card" href="#" id="discoverCard">
               <div class="tag"><span class="dot"></span> Local discovery</div>
               <h3>Find places around you</h3>
               <div class="meta"><span>Coffee</span><span>•</span><span>Parks</span><span>•</span><span>Food</span><span>•</span><span>Events</span></div>
@@ -560,7 +560,7 @@
 
       async function loadNearby(lat, lng) {
         setUserOnMap(lat, lng);
-        updateNearbyMarkers(lat, lng);
+        await updateNearbyMarkers(lat, lng);
 
         await Promise.all(
           cards.map(async (c) => {
@@ -581,8 +581,13 @@
           })
         );
       }
+      loadMapsApi();
 
-      if ("geolocation" in navigator) {
+      if (!("geolocation" in navigator)) {
+        setFallback("Location unavailable")
+      }
+        //commented this out incase this needs to be added back. 
+      /*if ("geolocation" in navigator) {
         loadMapsApi();
         navigator.geolocation.watchPosition(
           (pos) => loadNearby(pos.coords.latitude, pos.coords.longitude),
@@ -593,7 +598,52 @@
         );
       } else {
         setFallback("Location unavailable");
+      }*/
+
+      const discoverSection = document.getElementById("discover");
+      const discoverBtn = document.getElementById("discoverNearbyBtn");
+      const discoverCard = document.getElementbyId("discoverCard");
+
+      function scrollToDiscover() {
+        discoverSection?.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        });
       }
+
+      async function startDiscoverNearby() {
+        if (!("geolocation" in navigator)) {
+          setFallback("Location unavailable")
+          scrollToDiscover();
+          return;
+        }
+
+        navigator.geolocation.getCurrentPosition(
+          async (pos) => {
+            const lat = pos.coords.latitude;
+            const lng = pos.coords.longitude;
+
+            await loadNearby(lat,lng);
+            scrollToDiscover();
+          },
+          () => {
+            setFallBack("Enable location to see nearby picks");
+            scrollToDiscover();
+          },
+          {
+            enableHighAccuracy: true,
+            maximumAge: 15000,
+            timeout: 10000,
+          }
+        );
+      }
+
+      discoverBtn?.addEventListener("click", startDiscoveryNearby);
+
+      discoverCard?.addEventListener("click", (e)=> {
+        e.preventDefault();
+        startDiscoveryNearby();
+      });
     </script>
   
   </body>
