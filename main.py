@@ -224,6 +224,14 @@ def reorder_day_items(trip_id: int, day: int, payload: ReorderPayload, db: db_de
         ],
     } 
 
+#trip notepad
+@app.get("/planner")
+def planner_page():
+    return FileResponse("planner.html", media_type="text/html")
+
+
+    
+
 
 #Google Maps
 @app.get("/places/search")
