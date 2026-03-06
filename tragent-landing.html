@@ -400,10 +400,35 @@
           if (!r.ok) { setStatus("⚠️ Map config unavailable"); return; }
           const data = await r.json();
           const key = data.google_maps_js_api_key;
-          if (!key) { setStatus("⚠️ No Maps API key"); return; }
+          if (!key) {
+            setFallback("Set GOOGLE_MAPS_API_KEY to enable nearby picks");
+            return;
+          }
 
-          // don't inject twice
-          if (window.google?.maps) { window.__initTragentMap(); return; }
+          window.__initTragentMap = () => {
+            const start = lastPos || { lat: 25.9017, lng: -97.4975 };
+
+            map = new google.maps.Map(document.getElementById("map"), {
+              center: start,
+              zoom: 14,
+              disableDefaultUI: true,
+              gestureHandling: "greedy",
+            });
+
+            userMarker = new google.maps.Marker({
+              position: start,
+              map,
+              title: "You",
+            });
+            
+            loadNearby(start.lat, start.lng);
+            };
+
+
+            if (window.google?.maps) {
+              window.__initTragentMap();
+              return;
+            }
 
           const s = document.createElement("script");
           s.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(key)}&callback=__initTragentMap`;

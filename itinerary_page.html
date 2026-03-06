@@ -357,6 +357,22 @@
     }
     .note-input:focus { border-color: var(--teal); }
 
+    .results-group { margin-top: 16px; }
+    .results-group-title { font-weight: 800; font-size: 14px; color: var(--ink); margin: 12px 0 8px; }
+    .place-row {
+      display: flex; align-items: flex-start; gap: 12px;
+      padding: 12px 12px;
+      border-radius: 14px;
+      background: rgba(11,18,32,.03);
+      border: 1px solid rgba(11,18,32,.08);
+      margin-bottom: 10px;
+    }
+    .place-row input { margin-top: 3px; }
+    .place-info { flex: 1; min-width: 0; }
+    .place-name { font-weight: 700; font-size: 14px; }
+    .place-meta { font-size: 12px; color: var(--ink-soft); margin-top: 2px; line-height: 1.4; }
+    .place-badge { color: var(--terracotta); font-weight: 700; font-size: 12px; white-space: nowrap; }
+
     .save-row {
       max-width: 560px; margin: 0 auto;
       padding: 12px 0 48px;
@@ -453,7 +469,7 @@
 
       <button class="btn btn-primary" style="width:100%;margin-top:8px" onclick="generateItinerary()">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L13.5 8.5L20 10L13.5 11.5L12 18L10.5 11.5L4 10L10.5 8.5Z"/></svg>
-        Generate Itinerary
+        Find places
       </button>
     </div>
   </div>
@@ -463,6 +479,31 @@
     <div class="loading-wrap">
       <div class="spinner"></div>
       <p>Finding the best local spots&hellip;</p>
+    </div>
+  </div>
+
+  <div id="screen-results" class="page hidden">
+    <div class="page-top">
+      <button class="btn btn-ghost btn-icon" onclick="showScreen('plan')">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="15 18 9 12 15 6"/></svg>
+      </button>
+      <span class="page-top-title">Pick Your Stops</span>
+    </div>
+
+    <div class="card">
+      <h2 id="results-title">Places to consider</h2>
+      <p class="sub" id="results-sub"></p>
+
+      <div id="results-groups"></div>
+
+      <div class="save-row" style="margin-top:18px">
+        <button class="btn btn-outline" style="width:100%;margin-bottom:10px" onclick="autoGenerateFromResults()">
+          Auto-generate itinerary
+        </button>
+        <button class="btn btn-primary" style="width:100%" onclick="buildItineraryFromSelection()">
+          Create itinerary from selected
+        </button>
+      </div>
     </div>
   </div>
 
@@ -550,12 +591,14 @@
     }
 
     // app state
-    let currentPlan = null;     // { destination, days, interests }
-    let currentItinerary = null; // { days: [{ day, stops }] }
+    let currentPlan = null;
+    let currentItinerary = null;
+    let currentResults = null;
+    let selectedPlaceIds = new Set();
     let activeDay = 1;
 
     // shows one screen, hides the rest
-    const screens = ['landing', 'plan', 'loading', 'itinerary'];
+    const screens = ['landing', 'plan', 'loading', 'results', 'itinerary'];
 
     function showScreen(name) {
       screens.forEach(s => {
@@ -573,7 +616,116 @@
       showScreen('plan');
     }
 
-    // generate the itinerary
+    function mapInterestToQuery(interestId) {
+      const map = {
+        food: 'restaurants',
+        coffee: 'coffee',
+        parks: 'parks',
+        museums: 'museums',
+        nightlife: 'bars',
+        shopping: 'shopping',
+        outdoors: 'hiking',
+        history: 'historic',
+      };
+      return map[interestId] || interestId;
+    }
+
+    function titleForInterest(interestId) {
+      const found = INTERESTS.find((i) => i.id === interestId);
+      return found ? found.label : interestId;
+    }
+
+    function shuffleInPlace(arr) {
+      for (let i = arr.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+      }
+      return arr;
+    }
+
+    function buildItinerary(places, days) {
+      const itineraryDays = Array.from({ length: days }, (_, i) => ({ day: i + 1, stops: [] }));
+      const pool = [...places];
+      pool.forEach((p, idx) => {
+        itineraryDays[idx % days].stops.push(p);
+      });
+      return { days: itineraryDays };
+    }
+
+    function normalizePlace(p) {
+      return {
+        place_id: p.place_id,
+        name: p.name,
+        address: p.address || '',
+        rating: typeof p.rating === 'number' ? p.rating : '',
+      };
+    }
+
+    function renderResults() {
+      document.getElementById('results-title').textContent = currentPlan.destination;
+      const interestStr = currentPlan.interests.length
+        ? currentPlan.interests.map(titleForInterest).join(', ')
+        : 'all interests';
+      document.getElementById('results-sub').textContent = `Select places you want (${interestStr}).`;
+
+      const wrap = document.getElementById('results-groups');
+      wrap.innerHTML = '';
+
+      currentPlan.interests.forEach((interestId) => {
+        const places = (currentResults?.[interestId] || []).map(normalizePlace);
+        if (!places.length) return;
+
+        const group = document.createElement('div');
+        group.className = 'results-group';
+
+        const title = document.createElement('div');
+        title.className = 'results-group-title';
+        title.textContent = titleForInterest(interestId);
+        group.appendChild(title);
+
+        places.forEach((place) => {
+          const row = document.createElement('label');
+          row.className = 'place-row';
+
+          const input = document.createElement('input');
+          input.type = 'checkbox';
+          input.checked = selectedPlaceIds.has(place.place_id);
+          input.addEventListener('change', () => {
+            if (input.checked) selectedPlaceIds.add(place.place_id);
+            else selectedPlaceIds.delete(place.place_id);
+          });
+
+          const info = document.createElement('div');
+          info.className = 'place-info';
+          const name = document.createElement('div');
+          name.className = 'place-name';
+          name.textContent = place.name;
+          const meta = document.createElement('div');
+          meta.className = 'place-meta';
+          meta.textContent = place.address;
+          info.appendChild(name);
+          info.appendChild(meta);
+
+          const badge = document.createElement('div');
+          badge.className = 'place-badge';
+          badge.textContent = place.rating ? `${place.rating}★` : '';
+
+          row.appendChild(input);
+          row.appendChild(info);
+          row.appendChild(badge);
+          group.appendChild(row);
+        });
+
+        wrap.appendChild(group);
+      });
+    }
+
+    async function fetchPlaces(destination, interestId) {
+      const q = `${mapInterestToQuery(interestId)} in ${destination}`;
+      const data = await apiFetch(`/places/search?q=${encodeURIComponent(q)}`);
+      return (data.results || []).slice(0, 8).map(normalizePlace);
+    }
+
     async function generateItinerary() {
       const destination = document.getElementById('dest').value.trim();
       const days = parseInt(document.getElementById('days').value);
@@ -583,37 +735,59 @@
         return;
       }
 
-      currentPlan = { destination, days, interests: [...selectedInterests] };
+      const interests = [...selectedInterests];
+      if (!interests.length) interests.push('food', 'coffee', 'parks');
+
+      currentPlan = { destination, days, interests };
       showScreen('loading');
 
-      /*
-       * TODO: replace the setTimeout below with a real API call like:
-       *
-       * try {
-       *   const res = await fetch(API_BASE + '/itinerary/generate', {
-       *     method: 'POST',
-       *     headers: { 'Content-Type': 'application/json' },
-       *     body: JSON.stringify({
-       *       destination: currentPlan.destination,
-       *       days: currentPlan.days,
-       *       interests: currentPlan.interests,
-       *     }),
-       *   });
-       *   currentItinerary = await res.json();
-       *   renderItinerary();
-       *   showScreen('itinerary');
-       * } catch (err) {
-       *   console.error(err);
-       *   currentItinerary = getMockItinerary(days);
-       * }
-       */
+      selectedPlaceIds = new Set();
+      try {
+        const entries = await Promise.all(
+          currentPlan.interests.map(async (interestId) => [interestId, await fetchPlaces(destination, interestId)])
+        );
+        currentResults = Object.fromEntries(entries);
+      } catch {
+        currentResults = Object.fromEntries(
+          currentPlan.interests.map((interestId) => [interestId, shuffleInPlace([...MOCK_PLACES]).slice(0, 6)])
+        );
+      }
 
-      // fake delay for now, shows mock data
-      setTimeout(() => {
-        currentItinerary = getMockItinerary(days);
-        renderItinerary();
-        showScreen('itinerary');
-      }, 1600);
+      renderResults();
+      showScreen('results');
+    }
+
+    function collectPlacesFromResults() {
+      const seen = new Set();
+      const places = [];
+      currentPlan.interests.forEach((interestId) => {
+        (currentResults?.[interestId] || []).forEach((p) => {
+          if (!p?.place_id || seen.has(p.place_id)) return;
+          seen.add(p.place_id);
+          places.push(normalizePlace(p));
+        });
+      });
+      return places;
+    }
+
+    function autoGenerateFromResults() {
+      const all = collectPlacesFromResults();
+      const count = Math.min(currentPlan.days * 3, all.length);
+      const picked = shuffleInPlace([...all]).slice(0, count);
+      currentItinerary = buildItinerary(picked, currentPlan.days);
+      activeDay = 1;
+      renderItinerary();
+      showScreen('itinerary');
+    }
+
+    function buildItineraryFromSelection() {
+      const all = collectPlacesFromResults();
+      const picked = all.filter((p) => selectedPlaceIds.has(p.place_id));
+      const chosen = picked.length ? picked : shuffleInPlace([...all]).slice(0, Math.min(currentPlan.days * 3, all.length));
+      currentItinerary = buildItinerary(chosen, currentPlan.days);
+      activeDay = 1;
+      renderItinerary();
+      showScreen('itinerary');
     }
 
     // render the itinerary page
