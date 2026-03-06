@@ -227,7 +227,7 @@
             Save stops, add notes, and keep itineraries you can revisit.
           </p>
           <div class="ctaRow">
-            <a class="btn primary" href="#discover">Discover nearby</a>
+            <button class="btn primary" type="button" id="discoverNearbyBtn">Discover nearby</button>
             <a class="btn" href="/planner">Plan a trip</a>
           </div>
           <div class="splitCtas">
@@ -560,6 +560,7 @@
           })
         );
       }
+      loadMapsApi();
 
       // load map right away, don't wait for geo
       loadMapsApi();
@@ -577,6 +578,40 @@
         setStatus("📍 Location unavailable");
         setFallback();
       }
+
+      async function startDiscoverNearby() {
+        if (!("geolocation" in navigator)) {
+          setFallback("Location unavailable")
+          scrollToDiscover();
+          return;
+        }
+
+        navigator.geolocation.getCurrentPosition(
+          async (pos) => {
+            const lat = pos.coords.latitude;
+            const lng = pos.coords.longitude;
+
+            await loadNearby(lat,lng);
+            scrollToDiscover();
+          },
+          () => {
+            setFallBack("Enable location to see nearby picks");
+            scrollToDiscover();
+          },
+          {
+            enableHighAccuracy: true,
+            maximumAge: 15000,
+            timeout: 10000,
+          }
+        );
+      }
+
+      discoverBtn?.addEventListener("click", startDiscoveryNearby);
+
+      discoverCard?.addEventListener("click", (e)=> {
+        e.preventDefault();
+        startDiscoveryNearby();
+      });
     </script>
   
   </body>
