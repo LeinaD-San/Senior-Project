@@ -405,10 +405,28 @@
         .replaceAll('"', '&quot;')
         .replaceAll("'", '&#039;');
     }
+    const params = new URLSearchParams(window.location.search);
+    const destParam = params.get('dest');
+    const daysParam = parseInt(params.get('days'));
+    const interestsParam = params.get('interests');
 
+    if (destParam) tripState.destination = destParam;
+    if (daysParam && daysParam >= 1 && daysParam <= 7) {
+      tripState.days = daysParam;
+      tripState.itemsByDay = {};
+      for (let d = 1; d <= daysParam; d++) tripState.itemsByDay[d] = [];
+    }
     initDays();
     renderItinerary();
     renderResults([]);
+    if (destParam) {
+      document.getElementById('q').value = destParam;
+      if (interestsParam) {
+        document.getElementById('q').value = interestsParam.split(',').join(', ') + ' in ' + destParam;
+      }
+      runSearch();
+    }
+
   </script>
 </body>
 </html>

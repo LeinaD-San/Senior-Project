@@ -467,7 +467,7 @@
         <div class="chip-grid" id="chip-grid"></div>
       </div>
 
-      <button class="btn btn-primary" style="width:100%;margin-top:8px" onclick="generateItinerary()">
+      <button class="btn btn-primary" style="width:100%;margin-top:8px" onclick="window.location.href='/planner?dest=' + encodeURIComponent(document.getElementById('dest').value) + '&days=' + document.getElementById('days').value">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L13.5 8.5L20 10L13.5 11.5L12 18L10.5 11.5L4 10L10.5 8.5Z"/></svg>
         Find places
       </button>
@@ -893,6 +893,14 @@
        */
 
       alert('Trip saved! (connect to backend to actually save)');
+    }
+    
+    //fucntion to get info from landing page to planner page 
+    function goToPlanner() {
+      const dest = document.getElementById('dest').value;
+      const days = document.getElementById('days').value;
+      const interests = [...selectedInterests].join(',');
+      window.location.href = '/planner?dest=' + encodeURIComponent(dest) + '&days=' + days + '&interests=' + encodeURIComponent(interests);
     }
 
     // helper for API calls

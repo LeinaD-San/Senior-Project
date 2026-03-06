@@ -24,7 +24,7 @@ def config_maps():
 
 @app.get("/")
 def landing_page():
-    return FileResponse("tragent-landing.html", media_type="text/html")
+    return FileResponse("itinerary_page.html", media_type="text/html")
 
 
 @app.get("/itinerary")
