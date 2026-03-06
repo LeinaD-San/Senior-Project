@@ -116,7 +116,6 @@
         padding:16px;
         backdrop-filter: blur(16px);
       }
-      /* Map wrapper — explicit height so Google Maps has space to render */
       .mapWrap{
         position:relative;
         border-radius:16px;
@@ -126,8 +125,6 @@
         background:rgba(11,18,32,.03);
       }
       #map{width:100%;height:100%}
-
-      /* Location status badge overlaid on the map */
       #map-status{
         position:absolute;
         bottom:10px;
@@ -147,7 +144,6 @@
         transition:opacity .3s;
       }
       #map-status.live{color:#16a34a}
-
       .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:12px}
       .stat{border:1px solid rgba(11,18,32,.10);background:rgba(255,255,255,.75);border-radius:16px;padding:12px;}
       .stat b{display:block;font-size:18px;letter-spacing:-.02em}
@@ -231,7 +227,7 @@
             <a class="btn" href="/planner">Plan a trip</a>
           </div>
           <div class="splitCtas">
-            <a class="card" href="#discover">
+            <a class="card" href="#discover" id="discoverCard">
               <div class="tag"><span class="dot"></span> Local discovery</div>
               <h3>Find places around you</h3>
               <div class="meta"><span>Coffee</span><span>•</span><span>Parks</span><span>•</span><span>Food</span><span>•</span><span>Events</span></div>
@@ -262,7 +258,6 @@
         <aside class="panel" aria-label="Map preview">
           <div class="mapWrap">
             <div id="map"></div>
-            <!-- Live location status badge -->
             <div id="map-status">📍 Loading map…</div>
           </div>
           <div class="stats">
@@ -328,12 +323,18 @@
     <script>
       document.getElementById("year").textContent = new Date().getFullYear();
 
+      // state
       let map = null;
       let userMarker = null;
       let accuracyCircle = null;
       let nearbyMarkers = [];
       let mapsReady = false;
-      let pendingPos = null; // holds position if maps loads after geo fires
+      let lastPos = null;
+      let pendingPos = null;
+
+      // dom refs
+      const discoverBtn = document.getElementById("discoverNearbyBtn");
+      const discoverCard = document.getElementById("discoverCard");
 
       function setStatus(msg, isLive) {
         const el = document.getElementById("map-status");
@@ -342,9 +343,14 @@
         el.classList.toggle("live", !!isLive);
       }
 
-      // defined on window before the script tag is injected so the callback always exists
+      function scrollToDiscover() {
+        const el = document.getElementById("discover");
+        if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+
+      // single map init callback
       window.__initTragentMap = function () {
-        const defaultCenter = pendingPos || { lat: 25.9017, lng: -97.4975 };
+        const defaultCenter = pendingPos || lastPos || { lat: 25.9017, lng: -97.4975 };
 
         map = new google.maps.Map(document.getElementById("map"), {
           center: defaultCenter,
@@ -375,7 +381,7 @@
         accuracyCircle = new google.maps.Circle({
           map,
           center: defaultCenter,
-          radius: 80, // updated when real location arrives
+          radius: 80,
           fillColor: "#ff6a00",
           fillOpacity: 0.08,
           strokeColor: "#ff6a00",
@@ -393,7 +399,12 @@
         }
       };
 
+      // load the google maps script once
+      let mapsLoadStarted = false;
       async function loadMapsApi() {
+        if (mapsLoadStarted) return;
+        mapsLoadStarted = true;
+
         try {
           setStatus("🗺 Loading map…");
           const r = await fetch("/config/maps");
@@ -401,28 +412,10 @@
           const data = await r.json();
           const key = data.google_maps_js_api_key;
           if (!key) {
-            setFallback("Set GOOGLE_MAPS_API_KEY to enable nearby picks");
+            setFallback();
+            setStatus("⚠️ Set GOOGLE_MAPS_API_KEY to enable nearby picks");
             return;
           }
-
-          window.__initTragentMap = () => {
-            const start = lastPos || { lat: 25.9017, lng: -97.4975 };
-
-            map = new google.maps.Map(document.getElementById("map"), {
-              center: start,
-              zoom: 14,
-              disableDefaultUI: true,
-              gestureHandling: "greedy",
-            });
-
-            userMarker = new google.maps.Marker({
-              position: start,
-              map,
-              title: "You",
-            });
-
-            loadNearby(start.lat, start.lng);
-          };
 
           if (window.google?.maps) {
             window.__initTragentMap();
@@ -441,17 +434,16 @@
       }
 
       function applyPosition(lat, lng, accuracy) {
+        lastPos = { lat, lng };
+
         if (!mapsReady || !map) {
-          // buffer it, map will pick it up on init
           pendingPos = { lat, lng, accuracy };
           return;
         }
 
         const pos = { lat, lng };
-
         map.panTo(pos);
         map.setZoom(15);
-
         userMarker.setPosition(pos);
 
         if (accuracyCircle) {
@@ -463,7 +455,7 @@
       }
 
       const cards = [
-        { id: "rec1", keyword: "coffee shop", plannerQuery: "coffee shop"},
+        { id: "rec1", keyword: "coffee shop", plannerQuery: "coffee shop" },
         { id: "rec2", keyword: "park", plannerQuery: "park" },
         { id: "rec3", keyword: "restaurant", plannerQuery: "restaurant" },
       ];
@@ -486,31 +478,6 @@
           meta.textContent = [address, rating].filter(Boolean).join(" • ") || "";
         }
       }
-
-      function setCardLink(cardId, q) {
-        const el = document.getElementById(cardId);
-        if (!el) return;
-        el.href = "/planner?q=" + encodeURIComponent(q);
-      }
-
-
-      function setFallback(reason) {
-        cards.forEach((c, idx) => setCard(c.id, fallbackPlaces[idx]));
-      }
-
-      function setUserOnMap(lat, lng) {
-        lastPos = { lat, lng };
-        if (!map || !window.google?.maps) return;
-
-        const pos = { lat, lng };
-        map.setCenter(pos);
-
-        if (userMarker) {
-          userMarker.setPosition(pos);
-        } else {
-          userMarker = new google.maps.Marker({ position: pos, map, title: "You" });
-        }}
-        
 
       function setFallback() {
         cards.forEach((c, i) => setCard(c.id, fallbackPlaces[i]));
@@ -564,15 +531,15 @@
           })
         );
       }
+
+      // kick off map load once
       loadMapsApi();
 
-      // load map right away, don't wait for geo
-      loadMapsApi();
-
+      // watch position for live updates
       if ("geolocation" in navigator) {
         navigator.geolocation.watchPosition(
           (pos) => loadNearby(pos.coords.latitude, pos.coords.longitude),
-          (err) => {
+          () => {
             setStatus("📍 Location denied — showing Brownsville");
             setFallback();
           },
@@ -583,41 +550,33 @@
         setFallback();
       }
 
-      async function startDiscoverNearby() {
+      // "Discover nearby" button + card
+      function startDiscoverNearby() {
         if (!("geolocation" in navigator)) {
-          setFallback("Location unavailable")
+          setFallback();
           scrollToDiscover();
           return;
         }
 
         navigator.geolocation.getCurrentPosition(
           async (pos) => {
-            const lat = pos.coords.latitude;
-            const lng = pos.coords.longitude;
-
-            await loadNearby(lat,lng);
+            await loadNearby(pos.coords.latitude, pos.coords.longitude);
             scrollToDiscover();
           },
           () => {
-            setFallBack("Enable location to see nearby picks");
+            setFallback();
             scrollToDiscover();
           },
-          {
-            enableHighAccuracy: true,
-            maximumAge: 15000,
-            timeout: 10000,
-          }
+          { enableHighAccuracy: true, maximumAge: 15000, timeout: 10000 }
         );
       }
 
-      discoverBtn?.addEventListener("click", startDiscoveryNearby);
+      discoverBtn.addEventListener("click", startDiscoverNearby);
 
-      discoverCard?.addEventListener("click", (e)=> {
+      discoverCard.addEventListener("click", (e) => {
         e.preventDefault();
-        startDiscoveryNearby();
+        startDiscoverNearby();
       });
     </script>
-  
   </body>
-
 </html>
