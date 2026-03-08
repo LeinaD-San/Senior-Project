@@ -109,6 +109,25 @@ class ItineraryRequest(BaseModel):
     days: int = Field(ge=1, le=14)
     interests: List[str] = []
 
+
+#AI classes will give the backend a clean response format
+class AIStop(BaseModel):
+    place_id: str
+    name: str
+    address: str = ""
+    rating: Optional[float] = None
+    lat: Optional[float] = None
+    lng: Optional[float] = None
+    
+class AIDay(BaseModel):
+    day: int
+    stops: List[AIStop]
+
+class AIItineraryResponse(BaseModel):
+    destination: str
+    days: int
+    itinerary: list[AIDay]
+
 class ReorderPayload(BaseModel):
     ordered_item_ids: List[int] = Field(min_length=1)
 
@@ -679,6 +698,107 @@ async def geo_reverse(lat: float, lng: float):
     first = (data.get("results") or [{}])[0]
     return {"formatted_address": first.get("formatted_address")}
 
+#this is a helper that maps interests to search terms
+INTEREST_QUERY_MAP = {
+    "food": "restaurants",
+    "coffee": "coffee shops",
+    "park": "parks",
+    "museums": "museums",
+    "nightlife": "bars nightlife",
+    "shopping": "shopping",
+    "outdoors": "outdoor attractions",
+    "history": "historic sites",
+}
+
+#will give us real place candidates from google. 
+async def search_places_for_interests(destination: str, interest:str) -> List[dict]:
+    api_key = os.getenv("GOOGLE_MAPS_API_KEY")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="GOOGLE_MAPS_API_KEY is not set")
+    search_term = INTEREST_QUERY_MAP.get(interest, interest)
+    query = f"{search_term} in {destination}"
+
+    url = "https://maps.googleapis.com/maps/api/place/textsearch/json"
+    params = {"query": query, "key": api_key}
+
+    async with httpx.AsyncClient(timeout=15) as client:
+        r = await client.get(url, params=params)
+        r.raise_for_status()
+        data = r.json()
+    
+    status = data.get("status")
+    if status not in ("OK", "ZERO_RESULTS"):
+        raise HTTPException(
+            status_code=502,
+            detail={"google_status": status, "error": data.get("error_message")}
+        )
+
+    results = []
+    for p in data.get("results", [])[:8]:
+        location = p.get("geometry",{}).get("location", {})
+        results.append({
+            "place_id": p.get("place_id"),
+            "name": p.get("name"),
+            "address": p.get("formatted_address"),
+            "rating": p.get("rating"),
+            "lat": location.get("lat"),
+            "lng": location.get("lng"),
+        })
+    return results
+
+def dedupe_places(places: List[dict]) -> List[dict]:
+    seen = set()
+    deduped = []
+
+    for p in places: 
+        place_id = p.get("place_id")
+        if not place_id or place_id in seen:
+            continue
+        seen.add(place_id)
+        deduped.append(p)
+    return deduped
+
+def distribute_places_across_days(places: List[dict], days: int, max_stops_per_day: int = 3) -> List[dict]:
+    itinerary = [{"day": d, "stops": []} for d in range(1, days + 1)]
+
+    limited = places[: days * max_stops_per_day]
+
+    for idx, place in enamurated(limited):
+        day_index = idx % days
+        itinerary[day_index]["stops"].append({
+            "place_id": place.get("place_id"),
+            "name": place.get("name"),
+            "address": place.get("address") or "",
+            "rating": place.get("rating"),
+            "lat": place.get("lat"),
+            "lng":place.get("lng"),
+        })
+    return itinerary
+
+
+@app.post("/ai/itinerary", response_model=AIItineraryResponse)
+async def ai_itinerary(body: ItineraryRequest):
+    interests = body.interests or ["food", "coffee", "parks"]
+
+    all_places = []
+    for interest in interests:
+        results = await search_places_for_interests(body.destination, interest)
+        all_places.extend(results)
+    
+    deduped = deduped_places(all_places)
+
+    #sort better rated places first when possible
+    deduped.sort(key=lambda p: (p.get("rating") is not None, p.get("rating") or 0), reverse=True)
+
+    itinerary = distribute_places_across_days(deduped, body.days, max_stops_per_day=3)
+    
+    return {
+        "destination": body.destination,
+        "days": body.days,
+        "itinerary": itinerary,
+    }
+
+"""
 #AI assistant
 @app.post("/ai/itinerary")
 async def ai_itinerary(body: ItineraryRequest):
@@ -695,3 +815,4 @@ async def ai_itinerary(body: ItineraryRequest):
             ],
         })
     return {"destination": body.destination, "days": body.days, "itinerary": itinerary, "note": "AI stub"}
+"""
