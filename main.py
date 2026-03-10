@@ -20,6 +20,9 @@ from sqlalchemy.exc import OperationalError
 from pathlib import Path
 from fastapi.responses import FileResponse
 
+import json
+from openai import OpenAI
+
 BASE_DIR = Path(__file__).resolve().parent
 
 load_dotenv()
