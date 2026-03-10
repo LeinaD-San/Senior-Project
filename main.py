@@ -20,9 +20,14 @@ from sqlalchemy.exc import OperationalError
 from pathlib import Path
 from fastapi.responses import FileResponse
 
+import json
+from openai import OpenAI
+
 BASE_DIR = Path(__file__).resolve().parent
 
 load_dotenv()
+
+openai_client = OpenAI()
 
 app = FastAPI(title="Travel Agent API")
 
@@ -679,6 +684,149 @@ async def geo_reverse(lat: float, lng: float):
     first = (data.get("results") or [{}])[0]
     return {"formatted_address": first.get("formatted_address")}
 
+#-------------------------------------------------------------------
+#-------------------------------------------------------------------
+#temp helper func.
+def generate_ai_outline(destination: str, days: int, interests: List[str]):
+    if not os.getenv("OPENAI_API_KEY"):
+        raise HTTPException(status_code=500, detail="OPENAI_API_KEY is not set")
+
+    interests_text = ", ".join(interests) if interests else "general travel"
+
+    prompt = f"""
+You are helping generate a simple travel itinerary outline.
+
+Destination: {destination}
+Days: {days}
+Interests: {interests_text}
+
+Return valid JSON only with this shape:
+{{
+  "destination": "string",
+  "days": [
+    {{
+      "day": 1,
+      "theme": "short theme",
+      "queries": ["query 1", "query 2", "query 3"]
+    }}
+  ]
+}}
+
+Rules:
+- Return exactly {days} day objects
+- Each day must include 3 search queries
+- Queries must be specific Google Places style searches
+- Queries must include the destination name
+- Keep themes short
+- No markdown
+- No explanation outside JSON
+"""
+
+    response = openai_client.responses.create(
+        model="gpt-5-mini",
+        input=prompt
+    )
+
+    text = response.output_text
+    return json.loads(text)
+
+
+#helper search to return places
+async def search_places_query(query: str) -> list[dict]:
+    api_key = os.getenv("GOOGLE_MAPS_API_KEY")
+    if not api_key:
+        raise HTTPException(status_code=500, detail='GOOGLE_MAPS_API_KEY is not set')
+    url = 'https://maps.googleapis.com/maps/api/place/textsearch/json'
+    params={'query': query, 'key':api_key}
+
+    async with httpx.AsyncClient(timeout=15) as client:
+        r = await client.get(url, params=params)
+        r.raise_for_status()
+        data = r.json()
+
+    status = data.get('status')
+    if status not in ("OK", 'ZERO_RESULTS'):
+        raise HTTPException(
+            status_code=502, detail={'googe_status':status, 'error': data.get('error_message')},
+        )
+    
+    results = []
+    for p in data.get('results', []):
+        location = p.get('geometry', {}).get ('location', {})
+        results.append({
+            'place_id':p.get('place_id'),
+            'name':p.get('name'),
+            'address':p.get('formatted_address'),
+            'rating':p.get('rating'),
+            'lat':location.get('lat'),
+            'lng':location.get('lng'),
+        })
+    return results
+
+#
+def dedupe_places(places: list[dict]) -> list[dict]:
+    seen = set()
+    unique = []
+
+    for place in places:
+        place_id = place.get('place_id')
+        if not place_id or place_id in seen:
+            continue
+        seen.add(place_id)
+        unique.append(place)
+    return unique
+
+
+
+#temp replacement for /ai/ititnerary
+@app.post("/ai/itinerary")
+async def ai_itinerary(body: ItineraryRequest):
+    try:
+        outline = generate_ai_outline(
+            destination=body.destination,
+            days=body.days,
+            interests=body.interests,
+        )
+
+        itinerary_days = []
+
+        for day_info in outline.get("days", []):
+            queries = day_info.get("queries", [])
+            all_places = []
+
+            for query in queries:
+                places = await search_places_query(query)
+                all_places.extend(places[:4])
+
+            unique_places = dedupe_places(all_places)[:5]
+
+            itinerary_days.append({
+                "day": day_info.get("day"),
+                "theme": day_info.get("theme"),
+                "queries": queries,
+                "places": unique_places,
+            })
+
+        return {
+            "destination": body.destination,
+            "days": body.days,
+            "interests": body.interests,
+            "itinerary": itinerary_days,
+            "note": "AI itinerary with real Google Places results",
+        }
+
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=502, detail="AI returned invalid JSON")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+
+
+
+
+'''
+#temp. replacement for /ai/itinerary, below is the ORIGINAL DO NOT DELETE
 #AI assistant
 @app.post("/ai/itinerary")
 async def ai_itinerary(body: ItineraryRequest):
@@ -695,3 +843,4 @@ async def ai_itinerary(body: ItineraryRequest):
             ],
         })
     return {"destination": body.destination, "days": body.days, "itinerary": itinerary, "note": "AI stub"}
+'''
