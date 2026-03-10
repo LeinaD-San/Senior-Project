@@ -135,6 +135,11 @@
     .meta{flex:1;min-width:0}
     .name{font-weight:800;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .addr{color:var(--muted);font-size:12px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .detailsLink{
+      color:var(--orange);font-size:12px;font-weight:700;
+      cursor:pointer;margin-top:4px;display:inline-block;
+    }
+    .detailsLink:hover{text-decoration:underline}
     .itemActions{display:flex;gap:6px}
     .iconBtn{
       border:none;background:transparent;cursor:pointer;
@@ -193,28 +198,68 @@
       color:white;
     }
     .hint{color:var(--muted);font-size:12px;margin-top:8px}
-    .results{display:flex;flex-direction:column;gap:12px}
+    .results{display:flex;flex-direction:column;gap:14px}
+
+    /* result cards */
     .card{
       background:var(--card);
       border:1px solid var(--border);
       border-radius:18px;
       box-shadow:0 10px 26px rgba(11,18,32,.08);
-      padding:14px;
+      padding:16px;
       display:flex;
-      gap:12px;
+      gap:14px;
       align-items:flex-start;
     }
-    .thumb{
-      width:92px;height:92px;border-radius:14px;
+
+    /* carousel thumbnail */
+    .carousel{
+      width:200px;height:200px;border-radius:14px;
       background:rgba(11,18,32,.06);
       flex:0 0 auto;
+      position:relative;
+      overflow:hidden;
       display:flex;align-items:center;justify-content:center;
       color:var(--muted);font-weight:800;font-size:12px;
     }
+    .carousel img{
+      width:100%;height:100%;object-fit:cover;
+      position:absolute;inset:0;
+      opacity:0;
+      transition:opacity .3s ease;
+    }
+    .carousel img.active{opacity:1}
+    .carouselBtn{
+      position:absolute;top:50%;transform:translateY(-50%);
+      background:rgba(255,255,255,.85);
+      border:none;border-radius:50%;
+      width:26px;height:26px;
+      font-size:13px;font-weight:900;
+      cursor:pointer;z-index:2;
+      display:flex;align-items:center;justify-content:center;
+      color:var(--ink);
+      box-shadow:0 2px 8px rgba(0,0,0,.15);
+      opacity:0;
+      transition:opacity .2s;
+    }
+    .carousel:hover .carouselBtn{opacity:1}
+    .carouselBtn.left{left:4px}
+    .carouselBtn.right{right:4px}
+    .carouselBtn:hover{background:white}
+    .carouselDots{
+      position:absolute;bottom:5px;left:50%;transform:translateX(-50%);
+      display:flex;gap:4px;z-index:2;
+    }
+    .carouselDot{
+      width:6px;height:6px;border-radius:50%;
+      background:rgba(255,255,255,.5);
+    }
+    .carouselDot.active{background:white;box-shadow:0 0 4px rgba(0,0,0,.3)}
+
     .cardBody{flex:1;min-width:0}
-    .cardTitle{font-weight:900}
+    .cardTitle{font-weight:900;font-size:15px}
     .cardAddr{color:var(--muted);font-size:13px;margin-top:4px}
-    .cardRow{display:flex;gap:10px;align-items:center;margin-top:8px;flex-wrap:wrap}
+    .cardRow{display:flex;gap:10px;align-items:center;margin-top:10px;flex-wrap:wrap}
     .pill{
       font-size:12px;font-weight:800;
       padding:6px 10px;border-radius:999px;
@@ -223,14 +268,95 @@
     .addBtn{
       margin-left:auto;
       border:none;
-      padding:10px 12px;
+      padding:10px 14px;
       border-radius:14px;
       font-weight:900;
       cursor:pointer;
       background:linear-gradient(135deg,var(--orange),var(--orange2));
       color:white;
     }
-    .addBtn[disabled]{opacity:.55;cursor:not-allowed}
+    .addBtn[disabled]{
+      background:rgba(11,18,32,.06);
+      color:var(--muted);
+      cursor:not-allowed;
+      box-shadow:none;
+    }
+    .addBtn[disabled] .checkIcon{
+      display:inline-block;width:14px;height:14px;
+      border:2px solid var(--muted);border-radius:50%;
+      position:relative;margin-right:4px;vertical-align:middle;
+    }
+    .addBtn[disabled] .checkIcon::after{
+      content:'';position:absolute;
+      left:3px;top:0px;
+      width:4px;height:8px;
+      border:solid var(--muted);border-width:0 2px 2px 0;
+      transform:rotate(45deg);
+    }
+    .starIcon{
+      display:inline-block;width:12px;height:12px;
+      background:var(--orange);
+      clip-path:polygon(50% 0%,61% 35%,98% 35%,68% 57%,79% 91%,50% 70%,21% 91%,32% 57%,2% 35%,39% 35%);
+      vertical-align:middle;margin-right:3px;
+    }
+    .iconBtn svg{
+      width:16px;height:16px;
+      stroke:currentColor;stroke-width:2;
+      fill:none;stroke-linecap:round;stroke-linejoin:round;
+    }
+
+    /* spinner overlay for carousel lazy load */
+    .carouselSpinner{
+      position:absolute;inset:0;z-index:3;
+      display:flex;align-items:center;justify-content:center;
+      background:rgba(255,255,255,.5);
+    }
+    .carouselSpinner::after{
+      content:'';width:22px;height:22px;
+      border:3px solid var(--border);
+      border-top-color:var(--orange);
+      border-radius:50%;
+      animation:spin .6s linear infinite;
+    }
+    @keyframes spin{to{transform:rotate(360deg)}}
+
+    /* modal carousel */
+    .modalCarousel{
+      position:relative;
+      width:100%;
+      border-radius:14px;
+      overflow:hidden;
+      margin-top:10px;
+      background:rgba(11,18,32,.04);
+    }
+    .modalCarousel img{
+      width:100%;height:260px;object-fit:cover;
+      display:none;
+    }
+    .modalCarousel img.active{display:block}
+    .modalCarouselBtn{
+      position:absolute;top:50%;transform:translateY(-50%);
+      background:rgba(255,255,255,.9);
+      border:none;border-radius:50%;
+      width:34px;height:34px;
+      font-size:16px;font-weight:900;
+      cursor:pointer;z-index:2;
+      display:flex;align-items:center;justify-content:center;
+      color:var(--ink);
+      box-shadow:0 2px 10px rgba(0,0,0,.18);
+    }
+    .modalCarouselBtn.left{left:8px}
+    .modalCarouselBtn.right{right:8px}
+    .modalCarouselBtn:hover{background:white}
+    .modalCarouselDots{
+      display:flex;gap:6px;justify-content:center;
+      padding:10px 0 4px;
+    }
+    .modalCarouselDot{
+      width:8px;height:8px;border-radius:50%;
+      background:rgba(11,18,32,.18);cursor:pointer;
+    }
+    .modalCarouselDot.active{background:var(--orange)}
   </style>
 </head>
 
@@ -282,7 +408,6 @@
             <input id="q" placeholder="Search places (e.g., 'parks in San Antonio' or 'museums Brownsville')" />
             <button onclick="runSearch()">Search</button>
           </div>
-          <!--<div class="hint">Powered by your backend <code>/places/search</code>. Add results to the notepad on the left.</div> -->
         </div>
 
         <div class="results" id="results"></div>
@@ -290,10 +415,213 @@
     </div>
   </div>
 
+  <!-- details modal -->
+  <div id="detailsModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:9999; padding:18px; overflow:auto;">
+    <div style="max-width:720px; margin:40px auto; background:white; border-radius:16px; overflow:hidden;">
+      <div style="display:flex; justify-content:space-between; align-items:center; padding:14px 16px; border-bottom:1px solid rgba(11,18,32,.12);">
+        <div style="font-weight:900" id="detailsTitle">Place details</div>
+        <button onclick="closeDetails()" style="border:none; background:transparent; font-size:18px; cursor:pointer;">✕</button>
+      </div>
+
+      <div style="padding:16px;" id="detailsBody">
+        Loading…
+      </div>
+    </div>
+  </div>
+
   <script>
-    // Use same-origin since this page is served by FastAPI
     const API_BASE = '';
 
+    // cache for fetched detail photos so we don't re-fetch
+    const photoCache = {};
+
+    // fetch full photo list from details endpoint
+    async function fetchPlacePhotos(placeId) {
+      if (photoCache[placeId]) return photoCache[placeId];
+      try {
+        const res = await fetch(`/places/details/${encodeURIComponent(placeId)}`);
+        if (!res.ok) return null;
+        const data = await res.json();
+        // details returns up to 8 photos at 1200px, resize to 400 for card thumbnails
+        const photos = (data.photos || []).map(url => url.replace('maxwidth=1200', 'maxwidth=400'));
+        photoCache[placeId] = photos;
+        return photos;
+      } catch {
+        return null;
+      }
+    }
+
+    // rebuild a carousel's images + dots with a new photo list
+    function rebuildCarousel(container, photos) {
+      // remove old images, dots, spinner
+      container.querySelectorAll('img, .carouselDots, .carouselSpinner').forEach(el => el.remove());
+
+      photos.forEach((url, i) => {
+        const img = document.createElement('img');
+        img.src = url;
+        img.alt = '';
+        if (i === 0) img.classList.add('active');
+        // insert before the nav buttons
+        const firstBtn = container.querySelector('.carouselBtn');
+        if (firstBtn) container.insertBefore(img, firstBtn);
+        else container.appendChild(img);
+      });
+
+      if (photos.length > 1) {
+        const dotsWrap = document.createElement('div');
+        dotsWrap.className = 'carouselDots';
+        photos.forEach((_, i) => {
+          const dot = document.createElement('div');
+          dot.className = 'carouselDot' + (i === 0 ? ' active' : '');
+          dotsWrap.appendChild(dot);
+        });
+        container.appendChild(dotsWrap);
+
+        // make sure nav buttons exist
+        if (!container.querySelector('.carouselBtn.left')) {
+          container.insertAdjacentHTML('beforeend',
+            '<button class="carouselBtn left">‹</button><button class="carouselBtn right">›</button>');
+        }
+      }
+    }
+
+    // init card carousel with lazy-load on first arrow click
+    function initCardCarousel(container) {
+      const placeId = container.dataset.placeId;
+      let current = 0;
+      let loaded = false;   // true after we fetch full photos
+      let loading = false;
+
+      function getImgs() { return container.querySelectorAll('img'); }
+      function getDots() { return container.querySelectorAll('.carouselDot'); }
+
+      function show(idx) {
+        const imgs = getImgs();
+        const dots = getDots();
+        imgs.forEach((img, i) => img.classList.toggle('active', i === idx));
+        dots.forEach((dot, i) => dot.classList.toggle('active', i === idx));
+        current = idx;
+      }
+
+      async function ensureLoaded() {
+        if (loaded || loading) return;
+        loading = true;
+
+        // show spinner
+        const spinner = document.createElement('div');
+        spinner.className = 'carouselSpinner';
+        container.appendChild(spinner);
+
+        const photos = await fetchPlacePhotos(placeId);
+        spinner.remove();
+        loading = false;
+
+        if (photos && photos.length > 1) {
+          rebuildCarousel(container, photos);
+          show(0);
+          loaded = true;
+          // re-bind nav buttons after rebuild
+          bindNav();
+        } else {
+          // nothing extra to show
+          loaded = true;
+        }
+      }
+
+      function bindNav() {
+        const leftBtn = container.querySelector('.carouselBtn.left');
+        const rightBtn = container.querySelector('.carouselBtn.right');
+        if (!leftBtn || !rightBtn) return;
+
+        // clone+replace to remove old listeners
+        const newLeft = leftBtn.cloneNode(true);
+        const newRight = rightBtn.cloneNode(true);
+        leftBtn.replaceWith(newLeft);
+        rightBtn.replaceWith(newRight);
+
+        newLeft.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          await ensureLoaded();
+          const imgs = getImgs();
+          if (imgs.length <= 1) return;
+          show((current - 1 + imgs.length) % imgs.length);
+        });
+        newRight.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          await ensureLoaded();
+          const imgs = getImgs();
+          if (imgs.length <= 1) return;
+          show((current + 1) % imgs.length);
+        });
+      }
+
+      bindNav();
+
+      // also lazy-load on hover so photos are ready when user clicks
+      let hoverTriggered = false;
+      container.addEventListener('mouseenter', () => {
+        if (!hoverTriggered) {
+          hoverTriggered = true;
+          ensureLoaded();
+        }
+      });
+    }
+
+    // -- carousel helper for details modal --
+    function buildModalCarousel(photos) {
+      if (!photos || !photos.length) return '';
+
+      const imgsHtml = photos.map((url, i) =>
+        `<img src="${url}" alt="" class="${i === 0 ? 'active' : ''}" />`
+      ).join('');
+
+      const dotsHtml = photos.map((_, i) =>
+        `<div class="modalCarouselDot ${i === 0 ? 'active' : ''}" data-idx="${i}"></div>`
+      ).join('');
+
+      const navHtml = photos.length > 1
+        ? `<button class="modalCarouselBtn left" data-dir="-1">‹</button>
+           <button class="modalCarouselBtn right" data-dir="1">›</button>`
+        : '';
+
+      return `
+        <div class="modalCarousel" id="modalCarouselWrap">
+          ${imgsHtml}
+          ${navHtml}
+        </div>
+        ${photos.length > 1 ? `<div class="modalCarouselDots" id="modalCarouselDots">${dotsHtml}</div>` : ''}
+      `;
+    }
+
+    function initModalCarousel() {
+      const wrap = document.getElementById('modalCarouselWrap');
+      if (!wrap) return;
+      const imgs = wrap.querySelectorAll('img');
+      if (imgs.length <= 1) return;
+
+      const dotsWrap = document.getElementById('modalCarouselDots');
+      const dots = dotsWrap ? dotsWrap.querySelectorAll('.modalCarouselDot') : [];
+      let current = 0;
+
+      function show(idx) {
+        imgs.forEach((img, i) => img.classList.toggle('active', i === idx));
+        dots.forEach((dot, i) => dot.classList.toggle('active', i === idx));
+        current = idx;
+      }
+
+      wrap.querySelectorAll('.modalCarouselBtn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const dir = parseInt(btn.dataset.dir);
+          show((current + dir + imgs.length) % imgs.length);
+        });
+      });
+
+      dots.forEach(dot => {
+        dot.addEventListener('click', () => show(parseInt(dot.dataset.idx)));
+      });
+    }
+
+    // -- details modal --
     async function openDetails(placeId) {
       const modal = document.getElementById("detailsModal");
       const title = document.getElementById("detailsTitle");
@@ -302,58 +630,57 @@
       title.textContent = "Loading…";
       body.textContent = "Loading…";
 
-        try {
-          const res = await fetch(`/places/details/${encodeURIComponent(placeId)}`);
-          const data = await res.json();
-          if (!res.ok) throw new Error(data.detail || "Failed to load details");
+      try {
+        const res = await fetch(`/places/details/${encodeURIComponent(placeId)}`);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || "Failed to load details");
 
-          title.textContent = data.name || "Place details";
-
-          const hoursHtml = (data.hours && data.hours.length)
-            ? `<div style="margin-top:10px;"><div style="font-weight:900;margin-bottom:6px;">Hours</div>
-                <div style="color:rgba(11,18,32,.75); font-size:14px; line-height:1.5;">
-                  ${data.hours.map(h => `<div>${escapeHtml(h)}</div>`).join("")}
-                </div>
-              </div>`
-            : "";
-
-          const photosHtml = (data.photos && data.photos.length)
-            ? `<div style="display:flex; gap:10px; overflow:auto; padding:8px 0 2px; margin-top:10px;">
-                ${data.photos.map(url => `
-                  <img src="${url}" alt="" style="height:140px; border-radius:12px; object-fit:cover;" />
-                `).join("")}
-              </div>`
-            : "";
-
-          body.innerHTML = `
-            <div style="color:rgba(11,18,32,.75); font-size:14px; line-height:1.5;">
-              ${data.address ? `<div><b>Address:</b> ${escapeHtml(data.address)}</div>` : ""}
-              ${data.phone ? `<div><b>Phone:</b> ${escapeHtml(data.phone)}</div>` : ""}
-              ${data.website ? `<div><b>Website:</b> <a href="${data.website}" target="_blank" rel="noreferrer">${escapeHtml(data.website)}</a></div>` : ""}
-              ${typeof data.open_now === "boolean" ? `<div><b>Open now:</b> ${data.open_now ? "Yes" : "No"}</div>` : ""}
-              ${data.rating ? `<div><b>Rating:</b> ${escapeHtml(String(data.rating))}</div>` : ""}
-            </div>
-            ${photosHtml}
-            ${hoursHtml}
-          `;
-        } catch (e) {
-          title.textContent = "Place details";
-          body.textContent = "Could not load details. Check backend logs and API key.";
+        // cache photos for card carousels too
+        if (data.photos && data.photos.length) {
+          photoCache[placeId] = data.photos.map(url => url.replace('maxwidth=1200', 'maxwidth=400'));
         }
+
+        title.textContent = data.name || "Place details";
+
+        const hoursHtml = (data.hours && data.hours.length)
+          ? `<div style="margin-top:10px;"><div style="font-weight:900;margin-bottom:6px;">Hours</div>
+              <div style="color:rgba(11,18,32,.75); font-size:14px; line-height:1.5;">
+                ${data.hours.map(h => `<div>${escapeHtml(h)}</div>`).join("")}
+              </div>
+            </div>`
+          : "";
+
+        const photosHtml = buildModalCarousel(data.photos);
+
+        body.innerHTML = `
+          <div style="color:rgba(11,18,32,.75); font-size:14px; line-height:1.5;">
+            ${data.address ? `<div><b>Address:</b> ${escapeHtml(data.address)}</div>` : ""}
+            ${data.phone ? `<div><b>Phone:</b> ${escapeHtml(data.phone)}</div>` : ""}
+            ${data.website ? `<div><b>Website:</b> <a href="${data.website}" target="_blank" rel="noreferrer">${escapeHtml(data.website)}</a></div>` : ""}
+            ${typeof data.open_now === "boolean" ? `<div><b>Open now:</b> ${data.open_now ? "Yes" : "No"}</div>` : ""}
+            ${data.rating ? `<div><b>Rating:</b> <span class="starIcon"></span>${escapeHtml(String(data.rating))}</div>` : ""}
+          </div>
+          ${photosHtml}
+          ${hoursHtml}
+        `;
+
+        initModalCarousel();
+      } catch (e) {
+        title.textContent = "Place details";
+        body.textContent = "Could not load details. Check backend logs and API key.";
       }
+    }
 
-      function closeDetails() {
-        document.getElementById("detailsModal").style.display = "none";
-      }
+    function closeDetails() {
+      document.getElementById("detailsModal").style.display = "none";
+    }
 
-      // Close modal when clicking backdrop
-      document.addEventListener("click", (e) => {
-        const modal = document.getElementById("detailsModal");
-        if (modal.style.display === "block" && e.target === modal) closeDetails();
-      });
+    document.addEventListener("click", (e) => {
+      const modal = document.getElementById("detailsModal");
+      if (modal.style.display === "block" && e.target === modal) closeDetails();
+    });
 
-
-
+    // -- auth helpers --
     function getToken() {
       return localStorage.getItem('tragent_token');
     }
@@ -391,7 +718,7 @@
       }
     }
 
-    // Simple trip builder state (front-end only for now)
+    // -- trip state --
     const tripState = {
       destination: '',
       days: 3,
@@ -408,7 +735,6 @@
       }
       tripState.itemsByDay = nextItems;
       if (tripState.activeDay > newDays) tripState.activeDay = 1;
-
 
       initDays();
       renderDays();
@@ -481,7 +807,6 @@
       });
     }
 
-    // Build day buttons
     function initDays() {
       const row = document.getElementById('dayRow');
       row.innerHTML = '';
@@ -524,7 +849,7 @@
       }).catch(() => {});
     }
 
-    // LEFT panel render
+    // -- left panel render --
     function renderItinerary() {
       const list = document.getElementById('itinList');
       sortDayItems(tripState.activeDay);
@@ -548,6 +873,7 @@
           <div class="meta">
             <div class="name" title="${escapeHtml(p.name)}">${escapeHtml(p.name)}</div>
             <div class="addr" title="${escapeHtml(p.address || '')}">${escapeHtml(p.address || '')}</div>
+            <span class="detailsLink" data-pid="${escapeHtml(p.place_id)}">View details</span>
             <div style="margin-top:8px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
               <label style="display:flex;gap:6px;align-items:center;font-size:12px;color:var(--muted);font-weight:800">
                 <input type="checkbox" ${p.completed ? 'checked' : ''} data-action="complete" data-id="${p.id || ''}" />
@@ -557,11 +883,14 @@
             </div>
           </div>
           <div class="itemActions">
-            <button class="iconBtn" title="Move up" onclick="moveItem(${tripState.activeDay}, ${idx}, -1)">⬆️</button>
-            <button class="iconBtn" title="Move down" onclick="moveItem(${tripState.activeDay}, ${idx}, 1)">⬇️</button>
-            <button class="iconBtn" title="Remove" onclick="removeFromTrip('${p.place_id}')">🗑️</button>
+            <button class="iconBtn" title="Move up" onclick="moveItem(${tripState.activeDay}, ${idx}, -1)"><svg viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button>
+            <button class="iconBtn" title="Move down" onclick="moveItem(${tripState.activeDay}, ${idx}, 1)"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12l7 7 7-7"/></svg></button>
+            <button class="iconBtn" title="Remove" onclick="removeFromTrip('${p.place_id}')"><svg viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
           </div>
         `;
+
+        const dLink = div.querySelector('.detailsLink');
+        dLink.addEventListener('click', () => openDetails(p.place_id));
 
         const completeEl = div.querySelector('input[data-action="complete"]');
         if (completeEl) {
@@ -613,7 +942,6 @@
       if (isAdded(place.place_id)) return;
       tripState.itemsByDay[tripState.activeDay].push({ ...place, completed: false, notes: '', position: tripState.itemsByDay[tripState.activeDay].length + 1 });
       renderItinerary();
-      // Update result buttons (so it shows Added)
       renderResults(lastResults);
     }
 
@@ -634,8 +962,9 @@
       }
     }
 
-    // RIGHT results render
+    // -- right results render --
     let lastResults = [];
+
     function renderResults(results) {
       lastResults = results || [];
       const root = document.getElementById('results');
@@ -650,40 +979,60 @@
         const added = isAdded(p.place_id);
         const card = document.createElement('div');
         card.className = 'card';
+
+        // build carousel with initial photo(s) from search
+        const photos = p.photos || (p.photo_url ? [p.photo_url] : []);
+        let carouselHtml;
+        if (photos.length) {
+          const imgsHtml = photos.map((url, i) =>
+            `<img src="${url}" alt="" class="${i === 0 ? 'active' : ''}" />`
+          ).join('');
+          // always show dots placeholder (will be rebuilt on lazy load)
+          const dotsHtml = photos.length > 1
+            ? `<div class="carouselDots">${photos.map((_, i) => `<div class="carouselDot ${i === 0 ? 'active' : ''}"></div>`).join('')}</div>`
+            : '';
+          // always show nav buttons so user can trigger lazy load
+          const navHtml = `<button class="carouselBtn left">‹</button><button class="carouselBtn right">›</button>`;
+          carouselHtml = `<div class="carousel" data-place-id="${escapeHtml(p.place_id)}">${imgsHtml}${navHtml}${dotsHtml}</div>`;
+        } else {
+          carouselHtml = `<div class="carousel" data-place-id="${escapeHtml(p.place_id)}">Photo</div>`;
+        }
+
         card.innerHTML = `
-          <div class="thumb">
-            ${
-              p.photo_url
-                ? `<img src="${p.photo_url}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:14px;" />`
-                : `Photo`
-            }
-          </div>
+          ${carouselHtml}
           <div class="cardBody">
             <div class="cardTitle">${escapeHtml(p.name || 'Unknown')}</div>
             <div class="cardAddr">${escapeHtml(p.address || '')}</div>
             <div class="cardRow">
-              ${p.rating ? `<span class="pill">⭐ ${escapeHtml(String(p.rating))}</span>` : ``}
+              ${p.rating ? `<span class="pill"><span class="starIcon"></span>${escapeHtml(String(p.rating))}</span>` : ``}
               <span class="pill">Day ${tripState.activeDay}</span>
               <button class="addBtn" ${added ? 'disabled' : ''} data-place-id="${escapeHtml(p.place_id)}">
-                ${added ? 'Added ✅' : 'Add to Trip'}
+                ${added ? '<span class="checkIcon"></span>Added' : 'Add to Trip'}
               </button>
             </div>
           </div>
         `;
         root.appendChild(card);
+
+        // init carousel with lazy-loading
+        const carouselEl = card.querySelector('.carousel');
+        if (carouselEl) initCardCarousel(carouselEl);
+
+        // click card to open details
         card.style.cursor = "pointer";
         card.addEventListener("click", (e) => {
-          // don't trigger if they clicked the Add button
-          if (e.target.closest(".addBtn")) return;
+          if (e.target.closest(".addBtn") || e.target.closest(".carouselBtn")) return;
           openDetails(p.place_id);
-        });  
+        });
+
         const btn = card.querySelector(".addBtn");
         if (btn && !added) {
           btn.addEventListener('click', () => addToTrip(p));
         }
       });
     }
-    
+
+    // -- interest queries + shuffle --
     const INTEREST_TO_QUERY = {
       food: "restaurants",
       coffee: "coffee shop",
@@ -695,7 +1044,6 @@
       history: "historical sites",
     };
 
-    // Build queries like: "coffee shop in Brownsville, TX"
     function buildInterestQueries(destination, interestsCsv) {
       if (!interestsCsv) return [];
       const destPart = destination ? ` in ${destination}` : "";
@@ -706,35 +1054,41 @@
         .map(id => (INTEREST_TO_QUERY[id] || id) + destPart);
     }
 
-    // Fetch results for many queries and merge + dedupe
+    function interleaveResults(groupedResults) {
+      const groups = groupedResults.filter(g => g.length > 0);
+      if (!groups.length) return [];
+
+      const result = [];
+      const seen = new Set();
+      let maxLen = Math.max(...groups.map(g => g.length));
+
+      for (let i = 0; i < maxLen; i++) {
+        for (const group of groups) {
+          if (i < group.length) {
+            const p = group[i];
+            if (!p.place_id || seen.has(p.place_id)) continue;
+            seen.add(p.place_id);
+            result.push(p);
+          }
+        }
+      }
+      return result;
+    }
+
     async function searchByInterests(destination, interestsCsv) {
       const queries = buildInterestQueries(destination, interestsCsv);
       if (!queries.length) return [];
 
-      const all = [];
+      const grouped = [];
       for (const q of queries) {
         const res = await fetch(API_BASE + "/places/search?q=" + encodeURIComponent(q));
-        if (!res.ok) continue;
+        if (!res.ok) { grouped.push([]); continue; }
         const data = await res.json();
-        all.push(...(data.results || []));
+        grouped.push(data.results || []);
       }
 
-      // dedupe by place_id
-      const seen = new Set();
-      const deduped = [];
-      for (const p of all) {
-        if (!p.place_id || seen.has(p.place_id)) continue;
-        seen.add(p.place_id);
-        deduped.push(p);
-      }
-      return deduped;
+      return interleaveResults(grouped);
     }
-
-
-
-
-
-
 
     async function runSearch() {
       const q = document.getElementById('q').value.trim();
@@ -750,7 +1104,6 @@
       renderResults(data.results || []);
     }
 
-    // Demo save (backend save can be wired later)
     async function saveTrip() {
       const token = getToken();
       if (!token) {
@@ -800,11 +1153,9 @@
       }
 
       alert('Trip saved!');
-
       await loadSavedTrips();
     }
 
-    // helper
     function escapeHtml(str) {
       return String(str)
         .replaceAll('&', '&amp;')
@@ -813,6 +1164,8 @@
         .replaceAll('"', '&quot;')
         .replaceAll("'", '&#039;');
     }
+
+    // -- init from URL params --
     const params = new URLSearchParams(window.location.search);
     const qParam = params.get('q');
     const destParam = params.get('dest');
@@ -826,30 +1179,9 @@
       for (let d = 1; d <= daysParam; d++) tripState.itemsByDay[d] = [];
     }
 
-
     initDays();
     renderItinerary();
     renderResults([]);
-    /*
-    if (qParam && !destParam) {
-      document.getElementById('q').value = qParam;
-      runSearch();
-    }
-
-    if (destParam) {
-      // If interests were provided, do multi-search and combine results
-      if (interestsParam) {
-        document.getElementById('q').value = interestsParam.split(',').join(', ') + ' in ' + destParam;
-
-        (async () => {
-          const merged = await searchByInterests(destParam, interestsParam);
-          renderResults(merged);
-        })();
-      } else {
-        // fallback: regular single query search
-        document.getElementById('q').value = destParam;
-        runSearch();
-      }*/
 
     if (destParam && interestsParam){
       document.getElementById('q').value = interestsParam.split(',').join(', ') + ' in ' + destParam;
@@ -870,23 +1202,6 @@
     if (getToken()) {
       loadSavedTrips().catch(() => {});
     }
-    
-
-
-
-
   </script>
-  <div id="detailsModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:9999; padding:18px;">
-    <div style="max-width:720px; margin:40px auto; background:white; border-radius:16px; overflow:hidden;">
-      <div style="display:flex; justify-content:space-between; align-items:center; padding:14px 16px; border-bottom:1px solid rgba(11,18,32,.12);">
-        <div style="font-weight:900" id="detailsTitle">Place details</div>
-        <button onclick="closeDetails()" style="border:none; background:transparent; font-size:18px; cursor:pointer;">✕</button>
-      </div>
-
-      <div style="padding:16px;" id="detailsBody">
-        Loading…
-      </div>
-    </div>
-  </div>  
 </body>
 </html>
