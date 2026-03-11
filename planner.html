@@ -567,7 +567,7 @@
       });
     }
 
-    // -- carousel helper for details modal --
+    //  carousel helper for details modal
     function buildModalCarousel(photos) {
       if (!photos || !photos.length) return '';
 
@@ -621,7 +621,7 @@
       });
     }
 
-    // -- details modal --
+    // details modal
     async function openDetails(placeId) {
       const modal = document.getElementById("detailsModal");
       const title = document.getElementById("detailsTitle");
@@ -680,7 +680,7 @@
       if (modal.style.display === "block" && e.target === modal) closeDetails();
     });
 
-    // -- auth helpers --
+    // auth helpers
     function getToken() {
       return localStorage.getItem('tragent_token');
     }
@@ -718,7 +718,7 @@
       }
     }
 
-    // -- trip state --
+    // trip state
     const tripState = {
       destination: '',
       days: 3,
@@ -849,7 +849,7 @@
       }).catch(() => {});
     }
 
-    // -- left panel render --
+    // left panel render 
     function renderItinerary() {
       const list = document.getElementById('itinList');
       sortDayItems(tripState.activeDay);
@@ -962,7 +962,7 @@
       }
     }
 
-    // -- right results render --
+    // right results render
     let lastResults = [];
 
     function renderResults(results) {
@@ -1032,7 +1032,7 @@
       });
     }
 
-    // -- interest queries + shuffle --
+    // interest queries + shuffle 
     const INTEREST_TO_QUERY = {
       food: "restaurants",
       coffee: "coffee shop",
@@ -1165,7 +1165,7 @@
         .replaceAll("'", '&#039;');
     }
 
-    // -- init from URL params --
+    //  init from URL params 
     const params = new URLSearchParams(window.location.search);
     const qParam = params.get('q');
     const destParam = params.get('dest');
