@@ -477,6 +477,16 @@
         <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L13.5 8.5L20 10L13.5 11.5L12 18L10.5 11.5L4 10L10.5 8.5Z"/></svg>
         Find places
       </button>
+
+      <button class="btn btn-outline" style="width:100%;margin-top:10px" onclick="goToPlannerWithAi()">
+  AI Auto-Generate Trip
+      </button>
+      <p style="margin-top:10px;text-align:center;color:var(--ink-soft);font-size:13px;line-height:1.5;">
+  Unsure what you want to do? Let trAgent generate your trip for you.
+      </p>
+
+
+
     </div>
   </div>
 
@@ -748,6 +758,23 @@
         "&interests=" + encodeURIComponent(interests.join(","));
 
       window.location.href = url;
+    }
+
+    function goToPlannerWithAi() {
+      const dest = document.getElementById('dest').value.trim();
+      const days = document.getElementById('days').value;
+      const interests = [...selectedInterests].join(',');
+
+      if (!dest) {
+        alert('Enter a destination first.');
+        return;
+      }
+
+      window.location.href =
+        '/planner?dest=' + encodeURIComponent(dest) +
+        '&days=' + encodeURIComponent(days) +
+        '&interests=' + encodeURIComponent(interests) +
+        '&autogen=1';
     }
 
     async function fetchPlaces(destination, interestId) {
