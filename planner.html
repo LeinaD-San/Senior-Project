@@ -404,10 +404,23 @@
         </div>
 
         <div class="searchCard">
+
+          <!--- Updating autogenerate button
           <div class="searchRow">
             <input id="q" placeholder="Search places (e.g., 'parks in San Antonio' or 'museums Brownsville')" />
             <button onclick="runSearch()">Search</button>
           </div>
+        -->
+
+          <div class="searchRow">
+            <input id ="q" placeholder="Seach Places (e.g., 'parks in San Antonio' or museums Brownsville')"/>
+            <button onclick = "runSearch()">Search</button>
+            <button type="button" id="aiGenerateBTN" onclick="runAiGenerate()" style="background:linear-gradient(135deg,var(--orange),var(--orange2)); color:white;">
+            Auto-Generate
+            </button>
+          </div>
+
+
         </div>
 
         <div class="results" id="results"></div>
@@ -1103,6 +1116,82 @@
       const data = await res.json();
       renderResults(data.results || []);
     }
+  
+
+  function testAiButton() {
+  alert('AI button clicked');
+}
+
+  async function runAiGenerate() {
+  const destination = tripState.destination || document.getElementById('q').value.trim();
+  if (!destination) {
+    alert('Enter a destination first.');
+    return;
+  }
+
+  const params = new URLSearchParams(window.location.search);
+  const interestsParam = params.get('interests') || '';
+  const interests = interestsParam
+    .split(',')
+    .map(s => s.trim())
+    .filter(Boolean);
+
+  try {
+    const res = await fetch('/ai/itinerary', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        destination: destination,
+        days: tripState.days,
+        interests: interests,
+      }),
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      throw new Error(data.detail || 'AI itinerary request failed');
+    }
+
+    const nextItemsByDay = {};
+    for (let d = 1; d <= tripState.days; d++) {
+      nextItemsByDay[d] = [];
+    }
+
+    for (const dayInfo of (data.itinerary || [])) {
+      const day = dayInfo.day;
+      if (!nextItemsByDay[day]) nextItemsByDay[day] = [];
+
+      const places = dayInfo.places || [];
+      nextItemsByDay[day] = places.map((place, idx) => ({
+        place_id: place.place_id,
+        name: place.name,
+        address: place.address,
+        rating: place.rating,
+        lat: place.lat,
+        lng: place.lng,
+        notes: '',
+        completed: false,
+        position: idx + 1,
+      }));
+    }
+
+    tripState.destination = destination;
+    tripState.itemsByDay = nextItemsByDay;
+    tripState.activeDay = 1;
+
+    renderDays();
+    renderItinerary();
+    renderResults(lastResults);
+
+    alert('AI itinerary generated!');
+  } catch (err) {
+    alert('AI auto-generate failed: ' + err.message);
+  }
+}
+
+
+
 
     async function saveTrip() {
       const token = getToken();
@@ -1201,6 +1290,13 @@
     setSignedInUi(!!getToken());
     if (getToken()) {
       loadSavedTrips().catch(() => {});
+    }
+
+    const autogenParam = params.get('autogen');
+    if (autogenParam == '1'){
+      setTimeout(() =>{
+        runAiGenerate();
+      }, 250);
     }
   </script>
 </body>
