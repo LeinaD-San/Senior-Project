@@ -530,12 +530,13 @@ async def places_search(
     for p in data.get("results", []):
         location = p.get("geometry", {}).get("location", {})
 
-        # ✅ Build a thumbnail URL if Google returned a photo_reference
-        photos = p.get("photos", [])
-        photo_url = None
-        if photos and photos[0].get("photo_reference"):
-            ref = photos[0]["photo_reference"]
-            photo_url = (
+        # Build a thumbnail URL if Google returned a photo_reference
+        raw_photos = p.get("photos", [])
+        photo_urls = []
+        for ph in raw_photos[:5]:
+            ref = ph.get("photo_reference")
+            if ref:
+                photo_urls.append(
                 "https://maps.googleapis.com/maps/api/place/photo"
                 f"?maxwidth=400&photo_reference={ref}&key={api_key}"
             )
@@ -547,7 +548,8 @@ async def places_search(
             "rating": p.get("rating"),
             "lat": location.get("lat"),
             "lng": location.get("lng"),
-            "photo_url": photo_url,   # ✅ added
+            "photo_url": photo_urls[0] if raw_photos else None,
+            "photos": photo_urls,
         })
 
     return {"query": q, "count": len(results), "results": results}
