@@ -117,6 +117,7 @@ class ItineraryRequest(BaseModel):
 class ReorderPayload(BaseModel):
     ordered_item_ids: List[int] = Field(min_length=1)
 
+
 #app Health/activity
 @app.get("/health")
 def health():
