@@ -118,10 +118,49 @@ class ReorderPayload(BaseModel):
     ordered_item_ids: List[int] = Field(min_length=1)
 
 
+AI_OUTLINE_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "destination": {"type": "string"},
+        "days": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "day": {"type": "integer"},
+                    "theme": {"type": "string"},
+                    "queries": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "minItems": 3,
+                        "maxItems": 3
+                    }
+                },
+                "required": ["day", "theme", "queries"],
+                "additionalProperties": False
+            }
+        }
+    },
+    "required": ["destination", "days"],
+    "additionalProperties": False
+}
+
+
 #app Health/activity
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+@app.get("/ai/test")
+def ai_test():
+    try: 
+        response = openai_client.response.create(
+            model= "gpt-5-mini",
+            input= "Say hello in one short sentence." 
+        )
+        return {"ok": True, "text": reponse.output_text}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 def _hash_password(password: str, salt_b64: str) -> str:
