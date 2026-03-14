@@ -200,6 +200,33 @@
     .hint{color:var(--muted);font-size:12px;margin-top:8px}
     .results{display:flex;flex-direction:column;gap:14px}
 
+    .pagination{
+      display:flex;
+      justify-content:center;
+      align-items:center;
+      gap:6px;
+      margin-top:10px;
+      flex-wrap:wrap;
+    }
+    .pageBtn{
+      border:1px solid var(--border);
+      background:white;
+      color:var(--ink);
+      padding:8px 10px;
+      border-radius:12px;
+      font-weight:900;
+      font-size:12px;
+      cursor:pointer;
+      line-height:1;
+    }
+    .pageBtn[disabled]{
+      opacity:.45;
+      cursor:not-allowed;
+    }
+    .pageBtn.active{
+      background:rgba(11,18,32,.06);
+    }
+
     /* result cards */
     .card{
       background:var(--card);
@@ -977,9 +1004,102 @@
 
     // right results render
     let lastResults = [];
+    const RESULTS_PER_PAGE = 10;
+    let resultsPage = 1;
+
+    function getTotalPages() {
+      return Math.max(1, Math.ceil((lastResults?.length || 0) / RESULTS_PER_PAGE));
+    }
+
+    function setResultsPage(nextPage) {
+      const total = getTotalPages();
+      resultsPage = Math.min(total, Math.max(1, nextPage));
+      renderResultsPage();
+      window.scrollTo(0, 0);
+    }
 
     function renderResults(results) {
       lastResults = results || [];
+      resultsPage = 1;
+      renderResultsPage();
+    }
+
+    function renderPagination(root) {
+      const total = getTotalPages();
+      if (total <= 1) return;
+
+      const pager = document.createElement('div');
+      pager.className = 'pagination';
+
+      const prev = document.createElement('button');
+      prev.className = 'pageBtn';
+      prev.type = 'button';
+      prev.textContent = 'Prev';
+      prev.disabled = resultsPage <= 1;
+      prev.addEventListener('click', () => setResultsPage(resultsPage - 1));
+      pager.appendChild(prev);
+
+      const maxButtons = 7;
+      let start = Math.max(1, resultsPage - Math.floor(maxButtons / 2));
+      let end = Math.min(total, start + maxButtons - 1);
+      start = Math.max(1, end - maxButtons + 1);
+
+      if (start > 1) {
+        const first = document.createElement('button');
+        first.className = 'pageBtn';
+        first.type = 'button';
+        first.textContent = '1';
+        first.addEventListener('click', () => setResultsPage(1));
+        pager.appendChild(first);
+
+        if (start > 2) {
+          const dots = document.createElement('span');
+          dots.style.opacity = '0.6';
+          dots.style.fontWeight = '900';
+          dots.textContent = '…';
+          pager.appendChild(dots);
+        }
+      }
+
+      for (let p = start; p <= end; p++) {
+        const btn = document.createElement('button');
+        btn.className = 'pageBtn' + (p === resultsPage ? ' active' : '');
+        btn.type = 'button';
+        btn.textContent = String(p);
+        btn.disabled = p === resultsPage;
+        btn.addEventListener('click', () => setResultsPage(p));
+        pager.appendChild(btn);
+      }
+
+      if (end < total) {
+        if (end < total - 1) {
+          const dots = document.createElement('span');
+          dots.style.opacity = '0.6';
+          dots.style.fontWeight = '900';
+          dots.textContent = '…';
+          pager.appendChild(dots);
+        }
+
+        const last = document.createElement('button');
+        last.className = 'pageBtn';
+        last.type = 'button';
+        last.textContent = String(total);
+        last.addEventListener('click', () => setResultsPage(total));
+        pager.appendChild(last);
+      }
+
+      const next = document.createElement('button');
+      next.className = 'pageBtn';
+      next.type = 'button';
+      next.textContent = 'Next';
+      next.disabled = resultsPage >= total;
+      next.addEventListener('click', () => setResultsPage(resultsPage + 1));
+      pager.appendChild(next);
+
+      root.appendChild(pager);
+    }
+
+    function renderResultsPage() {
       const root = document.getElementById('results');
       root.innerHTML = '';
 
@@ -988,23 +1108,26 @@
         return;
       }
 
-      lastResults.forEach(p => {
+      const total = getTotalPages();
+      if (resultsPage > total) resultsPage = total;
+
+      const startIdx = (resultsPage - 1) * RESULTS_PER_PAGE;
+      const pageItems = lastResults.slice(startIdx, startIdx + RESULTS_PER_PAGE);
+
+      pageItems.forEach(p => {
         const added = isAdded(p.place_id);
         const card = document.createElement('div');
         card.className = 'card';
 
-        // build carousel with initial photo(s) from search
         const photos = p.photos || (p.photo_url ? [p.photo_url] : []);
         let carouselHtml;
         if (photos.length) {
           const imgsHtml = photos.map((url, i) =>
             `<img src="${url}" alt="" class="${i === 0 ? 'active' : ''}" />`
           ).join('');
-          // always show dots placeholder (will be rebuilt on lazy load)
           const dotsHtml = photos.length > 1
             ? `<div class="carouselDots">${photos.map((_, i) => `<div class="carouselDot ${i === 0 ? 'active' : ''}"></div>`).join('')}</div>`
             : '';
-          // always show nav buttons so user can trigger lazy load
           const navHtml = `<button class="carouselBtn left">‹</button><button class="carouselBtn right">›</button>`;
           carouselHtml = `<div class="carousel" data-place-id="${escapeHtml(p.place_id)}">${imgsHtml}${navHtml}${dotsHtml}</div>`;
         } else {
@@ -1027,11 +1150,9 @@
         `;
         root.appendChild(card);
 
-        // init carousel with lazy-loading
         const carouselEl = card.querySelector('.carousel');
         if (carouselEl) initCardCarousel(carouselEl);
 
-        // click card to open details
         card.style.cursor = "pointer";
         card.addEventListener("click", (e) => {
           if (e.target.closest(".addBtn") || e.target.closest(".carouselBtn")) return;
@@ -1043,6 +1164,8 @@
           btn.addEventListener('click', () => addToTrip(p));
         }
       });
+
+      renderPagination(root);
     }
 
     // interest queries + shuffle 
