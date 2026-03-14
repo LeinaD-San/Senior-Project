@@ -18,7 +18,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.exc import OperationalError
 
 from pathlib import Path
-from fastapi.responses import FileResponse
 
 import json
 from openai import OpenAI
@@ -154,11 +153,11 @@ def health():
 @app.get("/ai/test")
 def ai_test():
     try: 
-        response = openai_client.response.create(
+        response = openai_client.responses.create(
             model= "gpt-5-mini",
             input= "Say hello in one short sentence." 
         )
-        return {"ok": True, "text": reponse.output_text}
+        return {"ok": True, "text": response.output_text}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -728,49 +727,59 @@ async def geo_reverse(lat: float, lng: float):
 
 #-------------------------------------------------------------------
 #-------------------------------------------------------------------
-#temp helper func.
+#replaced the temporary helper function, rest of the AI route is not.
 def generate_ai_outline(destination: str, days: int, interests: List[str]):
     if not os.getenv("OPENAI_API_KEY"):
-        raise HTTPException(status_code=500, detail="OPENAI_API_KEY is not set")
-
+        raise HTTPException(status_code=500, detail = "OPENAI_API_KEY is not set")
+    
     interests_text = ", ".join(interests) if interests else "general travel"
 
-    prompt = f"""
-You are helping generate a simple travel itinerary outline.
+    try: 
+        response = openai_client.responses.create(
+            model= "gpt-5-mini",
+            input=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You create short travel itinerary outlines for a trip planner."
+                        "Return realistic Google Places style search queries."
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": (
+                        f"Destination: {destination}\n"
+                        f"Days: {days}\n"
+                        f"Interests: {interests_text}\n\n"
+                        f"Create exactly {days} day objects. "
+                        "Each day must have a short theme and exactly 3 queries."
+                        "Each query must include the destination name."
+                    ),
+                },
+            ],
+            text ={
+                "format": {
+                    "type": "json_schema",
+                    "name": "itinerary_outline",
+                    "schema": AI_OUTLINE_SCHEMA,
+                    "strict": True,
+                }
+            },
+        )
 
-Destination: {destination}
-Days: {days}
-Interests: {interests_text}
+        data = json.loads(response.output_text)
 
-Return valid JSON only with this shape:
-{{
-  "destination": "string",
-  "days": [
-    {{
-      "day": 1,
-      "theme": "short theme",
-      "queries": ["query 1", "query 2", "query 3"]
-    }}
-  ]
-}}
+        if len(data.get("days", [])) !=days:
+            raise HTTPException(status_code=502, detail="AI returned unexpected day count")
 
-Rules:
-- Return exactly {days} day objects
-- Each day must include 3 search queries
-- Queries must be specific Google Places style searches
-- Queries must include the destination name
-- Keep themes short
-- No markdown
-- No explanation outside JSON
-"""
+        return data
 
-    response = openai_client.responses.create(
-        model="gpt-5-mini",
-        input=prompt
-    )
-
-    text = response.output_text
-    return json.loads(text)
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=502, detail="AI returned invalid JSON")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"OpenAI request failed: {str(e)}")
 
 
 #helper search to return places
@@ -789,7 +798,7 @@ async def search_places_query(query: str) -> list[dict]:
     status = data.get('status')
     if status not in ("OK", 'ZERO_RESULTS'):
         raise HTTPException(
-            status_code=502, detail={'googe_status':status, 'error': data.get('error_message')},
+            status_code=502, detail={'google_status':status, 'error': data.get('error_message')},
         )
     
     results = []
@@ -818,8 +827,16 @@ def dedupe_places(places: list[dict]) -> list[dict]:
         unique.append(place)
     return unique
 
+@app.post("/ai/outline-test")
+def ai_outline_test(body: ItineraryRequest):
+    return generate_ai_outline(
+        destination=body.destination,
+        days=body.days,
+        interests = body.interests,
+    )
 
 
+#will not replace just yet once the outline is replaced, the route will automatically start using the improved version. 
 #temp replacement for /ai/ititnerary
 @app.post("/ai/itinerary")
 async def ai_itinerary(body: ItineraryRequest):
