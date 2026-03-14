@@ -155,6 +155,24 @@
       font-weight: 500;
     }
 
+    .rotating-word {
+      display: inline-block;
+      min-width: 12ch;
+      transition: opacity 220ms ease, transform 220ms ease;
+      will-change: opacity, transform;
+    }
+
+    .rotating-word.is-exiting {
+      opacity: 0;
+      transform: translateY(-0.15em);
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .rotating-word {
+        transition: none;
+      }
+    }
+
     .hero-sub {
       font-size: 18px; line-height: 1.65;
       color: var(--ink-soft);
@@ -441,7 +459,7 @@
 
     <div class="hero">
       <h1 >
-        Find your next<br>favorite <em>local spot</em>
+        Find your next<br><span class="rotating-word" id="rotating-word">favorite</span> <em>local spot</em>
       </h1>
 
       <p class="hero-sub">
@@ -587,6 +605,23 @@
     // backend url
     const API_BASE = 'http://localhost:8000';
 
+    const ROTATING_WORDS = [
+      'favorite',
+      'new',
+      'fun',
+      'exciting',
+      'adventurous',
+      'scenic',
+      'cozy',
+      'hidden',
+      'iconic',
+      'charming',
+      'histotic',
+      'popular',
+      'trendy',
+
+    ];
+
     // interest options
     const INTERESTS = [
       { id: 'food',     label: 'Food',     emoji: '🍽' },
@@ -600,6 +635,29 @@
     ];
 
     const selectedInterests = new Set();
+//revolving word function
+    function startRotatingWord() {
+      const el = document.getElementById('rotating-word');
+      if (!el) return;
+
+      const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      if (reducedMotion) return;
+
+      const words = ROTATING_WORDS.filter(Boolean);
+      if (words.length <= 1) return;
+
+      let idx = 0;
+      el.textContent = words[idx];
+
+      window.setInterval(() => {
+        idx = (idx + 1) % words.length;
+        el.classList.add('is-exiting');
+        window.setTimeout(() => {
+          el.textContent = words[idx];
+          el.classList.remove('is-exiting');
+        }, 220);
+      }, 1350);
+    }
 
     // Build interest chips
     const chipGrid = document.getElementById('chip-grid');
