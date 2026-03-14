@@ -190,6 +190,35 @@
       width: 100%; max-width: 500px;
       transition: border-color 0.2s, box-shadow 0.2s;
     }
+
+    .char-left {
+      font-size: 10px;
+      color: rgba(11, 18, 32, 0.55);
+      margin-top: 0;
+      text-align: left;
+      width: 100%;
+      max-width: 500px;
+      padding-left: 0;
+      line-height: 1.1;
+    }
+
+    .char-left.char-left-tight {
+      margin-top: 0;
+    }
+
+    .char-left.search-counter {
+      padding-left: 24px;
+    }
+
+    .note-wrap {
+      width: 100%;
+    }
+
+    .note-wrap .char-left {
+      max-width: none;
+      padding-left: 0;
+      margin-top: 2px;
+    }
     .search-bar:focus-within {
       border-color: var(--teal);
       box-shadow: 0 0 0 4px rgba(42,107,110,0.1);
@@ -438,11 +467,13 @@
       </p>
 
       <form class="search-bar" onsubmit="return false;">
-        <input id="landing-search" type="text" placeholder="Search a city or neighborhood..." />
+        <input id="landing-search" type="text" placeholder="Search a city or neighborhood..." maxlength="120" />
         <button type="button" class="btn btn-primary btn-icon" onclick="handleSearch(event)">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
         </button>
       </form>
+
+      <div class="char-left char-left-tight search-counter" data-char-left-for="landing-search" aria-live="polite"></div>
 
       <div>
         <button class="btn btn-outline" type="button" onclick="showScreen('plan')">
@@ -468,7 +499,8 @@
 
       <div class="field">
         <label for="dest">Destination</label>
-        <input id="dest" type="text" placeholder="e.g. Brownsville, TX" />
+        <input id="dest" type="text" placeholder="e.g. Brownsville, TX" maxlength="120" />
+        <div class="char-left char-left-tight" data-char-left-for="dest" aria-live="polite"></div>
       </div>
 
       <div class="field">
@@ -685,12 +717,46 @@
       window.scrollTo(0, 0);
     }
 
-    startRotatingWord();
+    function formatCharLeftText(left) {
+      if (left === 1) return '1 character left';
+      return `${left} characters left`;
+    }
+
+    function bindCharLeftCounter(inputEl, counterEl) {
+      if (!inputEl || !counterEl) return;
+      const limit = Number(inputEl.getAttribute('maxlength'));
+      if (!Number.isFinite(limit) || limit <= 0) return;
+
+      const update = () => {
+        const value = inputEl.value || '';
+        const left = Math.max(0, limit - value.length);
+        counterEl.textContent = formatCharLeftText(left);
+      };
+
+      inputEl.addEventListener('input', update);
+      update();
+    }
+
+    function setupCharLeftCounters() {
+      document.querySelectorAll('[data-char-left-for]').forEach((counterEl) => {
+        const id = counterEl.getAttribute('data-char-left-for');
+        if (id === 'note') return;
+        const inputEl = document.getElementById(id);
+        bindCharLeftCounter(inputEl, counterEl);
+      });
+
+      document.querySelectorAll('.note-wrap').forEach((wrap) => {
+        const inputEl = wrap.querySelector('textarea.note-input');
+        const counterEl = wrap.querySelector('[data-char-left-for="note"]');
+        bindCharLeftCounter(inputEl, counterEl);
+      });
+    }
 
     // handle search from landing page
     function handleSearch(e) {
       e.preventDefault();
-      const query = document.getElementById('landing-search').value.trim();
+      const query = document.getElementById('landing-search').value.trim().slice(0, 120);
+      document.getElementById('landing-search').value = query;
       if (!query) return;
       const destEl = document.getElementById('dest');
       if (destEl) destEl.value = query;
@@ -958,7 +1024,10 @@
               <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
               ${stop.rating}
             </div>
-            <textarea class="note-input" rows="1" placeholder="Add a note…"></textarea>
+            <div class="note-wrap">
+              <textarea class="note-input" rows="1" placeholder="Add a note…" maxlength="1000"></textarea>
+              <div class="char-left" data-char-left-for="note" aria-live="polite"></div>
+            </div>
           </div>
           <div class="stop-actions">
             <button title="Remove stop" onclick="removeStop('${stop.place_id}')">
@@ -968,6 +1037,8 @@
         `;
         list.appendChild(div);
       });
+
+      setupCharLeftCounters();
     }
 
     // remove a stop from the list
@@ -1058,6 +1129,7 @@
     }
 
     (async () => {
+      setupCharLeftCounters();
       updateSignInLink();
 
       const url = new URL(window.location.href);

@@ -4,7 +4,7 @@ import hashlib
 import hmac
 import secrets
 
-from fastapi import FastAPI, Depends, HTTPException, Header
+from fastapi import FastAPI, Depends, HTTPException, Header, Query
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from typing import List, Annotated, Optional
@@ -95,9 +95,9 @@ class SessionResponse(BaseModel):
 
 class TripItemCreate(BaseModel):
     day: int = Field(ge=1, le=30)
-    place_id: str
-    name: str
-    notes: str = ""
+    place_id: str = Field(min_length=1, max_length=200)
+    name: str = Field(min_length=1, max_length=200)
+    notes: str = Field(default="", max_length=1000)
 
     lat: Optional[float] = None
     lng: Optional[float] = None
@@ -106,11 +106,11 @@ class TripItemCreate(BaseModel):
 
 
 class TripItemUpdate(BaseModel):
-    notes: Optional[str] = None
+    notes: Optional[str] = Field(default=None, max_length=1000)
     completed: Optional[bool] = None
 
 class ItineraryRequest(BaseModel):
-    destination: str
+    destination: str = Field(min_length=1, max_length=120)
     days: int = Field(ge=1, le=14)
     interests: List[str] = []
 
@@ -498,7 +498,7 @@ async def places_search(q: str, lat: Optional[float] = None, lng: Optional[float
 '''
 @app.get("/places/search")
 async def places_search(
-    q: str,
+    q: str = Query(min_length=1, max_length=120),
     lat: Optional[float] = None,
     lng: Optional[float] = None,
     radius: int = 30000

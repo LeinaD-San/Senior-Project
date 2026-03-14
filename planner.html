@@ -200,6 +200,33 @@
     .hint{color:var(--muted);font-size:12px;margin-top:8px}
     .results{display:flex;flex-direction:column;gap:14px}
 
+    .pagination{
+      display:flex;
+      justify-content:center;
+      align-items:center;
+      gap:6px;
+      margin-top:10px;
+      flex-wrap:wrap;
+    }
+    .pageBtn{
+      border:1px solid var(--border);
+      background:white;
+      color:var(--ink);
+      padding:8px 10px;
+      border-radius:12px;
+      font-weight:900;
+      font-size:12px;
+      cursor:pointer;
+      line-height:1;
+    }
+    .pageBtn[disabled]{
+      opacity:.45;
+      cursor:not-allowed;
+    }
+    .pageBtn.active{
+      background:rgba(11,18,32,.06);
+    }
+
     /* result cards */
     .card{
       background:var(--card);
@@ -413,12 +440,14 @@
         -->
 
           <div class="searchRow">
-            <input id ="q" placeholder="Seach Places (e.g., 'parks in San Antonio' or museums Brownsville')"/>
+            <input id ="q" placeholder="Seach Places (e.g., 'parks in San Antonio' or museums Brownsville')" maxlength="120" />
             <button onclick = "runSearch()">Search</button>
             <button type="button" id="aiGenerateBTN" onclick="runAiGenerate()" style="background:linear-gradient(135deg,var(--orange),var(--orange2)); color:white;">
             Auto-Generate
             </button>
           </div>
+
+          <div id="qCounter" style="margin-top:0;font-size:10px;line-height:1.1;color:rgba(11,18,32,.55);" aria-live="polite"></div>
 
 
         </div>
@@ -892,7 +921,8 @@
                 <input type="checkbox" ${p.completed ? 'checked' : ''} data-action="complete" data-id="${p.id || ''}" />
                 Completed
               </label>
-              <textarea data-action="notes" data-id="${p.id || ''}" placeholder="Notes" style="width:100%;margin-top:6px;padding:8px 10px;border-radius:12px;border:1px solid var(--border);font-size:13px;" rows="1">${escapeHtml(p.notes || '')}</textarea>
+              <textarea data-action="notes" data-id="${p.id || ''}" placeholder="Notes" style="width:100%;margin-top:6px;padding:8px 10px;border-radius:12px;border:1px solid var(--border);font-size:13px;" rows="1" maxlength="1000">${escapeHtml(p.notes || '')}</textarea>
+              <div data-action="notes-left" style="margin-top:6px;font-size:12px;color:rgba(11,18,32,.55);" aria-live="polite"></div>
             </div>
           </div>
           <div class="itemActions">
@@ -922,8 +952,10 @@
 
         const notesEl = div.querySelector('textarea[data-action="notes"]');
         if (notesEl) {
+          bindCharLeftCounter(notesEl, div.querySelector('[data-action="notes-left"]'));
           notesEl.addEventListener('blur', async (e) => {
-            const value = e.target.value;
+            const value = (e.target.value || '').slice(0, 1000);
+            e.target.value = value;
             p.notes = value;
             if (persistEnabled() && p.id) {
               await fetch(`/trips/${tripState.currentTripId}/items/${p.id}` , {
@@ -977,9 +1009,102 @@
 
     // right results render
     let lastResults = [];
+    const RESULTS_PER_PAGE = 10;
+    let resultsPage = 1;
+
+    function getTotalPages() {
+      return Math.max(1, Math.ceil((lastResults?.length || 0) / RESULTS_PER_PAGE));
+    }
+
+    function setResultsPage(nextPage) {
+      const total = getTotalPages();
+      resultsPage = Math.min(total, Math.max(1, nextPage));
+      renderResultsPage();
+      window.scrollTo(0, 0);
+    }
 
     function renderResults(results) {
       lastResults = results || [];
+      resultsPage = 1;
+      renderResultsPage();
+    }
+
+    function renderPagination(root) {
+      const total = getTotalPages();
+      if (total <= 1) return;
+
+      const pager = document.createElement('div');
+      pager.className = 'pagination';
+
+      const prev = document.createElement('button');
+      prev.className = 'pageBtn';
+      prev.type = 'button';
+      prev.textContent = 'Prev';
+      prev.disabled = resultsPage <= 1;
+      prev.addEventListener('click', () => setResultsPage(resultsPage - 1));
+      pager.appendChild(prev);
+
+      const maxButtons = 7;
+      let start = Math.max(1, resultsPage - Math.floor(maxButtons / 2));
+      let end = Math.min(total, start + maxButtons - 1);
+      start = Math.max(1, end - maxButtons + 1);
+
+      if (start > 1) {
+        const first = document.createElement('button');
+        first.className = 'pageBtn';
+        first.type = 'button';
+        first.textContent = '1';
+        first.addEventListener('click', () => setResultsPage(1));
+        pager.appendChild(first);
+
+        if (start > 2) {
+          const dots = document.createElement('span');
+          dots.style.opacity = '0.6';
+          dots.style.fontWeight = '900';
+          dots.textContent = '…';
+          pager.appendChild(dots);
+        }
+      }
+
+      for (let p = start; p <= end; p++) {
+        const btn = document.createElement('button');
+        btn.className = 'pageBtn' + (p === resultsPage ? ' active' : '');
+        btn.type = 'button';
+        btn.textContent = String(p);
+        btn.disabled = p === resultsPage;
+        btn.addEventListener('click', () => setResultsPage(p));
+        pager.appendChild(btn);
+      }
+
+      if (end < total) {
+        if (end < total - 1) {
+          const dots = document.createElement('span');
+          dots.style.opacity = '0.6';
+          dots.style.fontWeight = '900';
+          dots.textContent = '…';
+          pager.appendChild(dots);
+        }
+
+        const last = document.createElement('button');
+        last.className = 'pageBtn';
+        last.type = 'button';
+        last.textContent = String(total);
+        last.addEventListener('click', () => setResultsPage(total));
+        pager.appendChild(last);
+      }
+
+      const next = document.createElement('button');
+      next.className = 'pageBtn';
+      next.type = 'button';
+      next.textContent = 'Next';
+      next.disabled = resultsPage >= total;
+      next.addEventListener('click', () => setResultsPage(resultsPage + 1));
+      pager.appendChild(next);
+
+      root.appendChild(pager);
+    }
+
+    function renderResultsPage() {
       const root = document.getElementById('results');
       root.innerHTML = '';
 
@@ -988,23 +1113,26 @@
         return;
       }
 
-      lastResults.forEach(p => {
+      const total = getTotalPages();
+      if (resultsPage > total) resultsPage = total;
+
+      const startIdx = (resultsPage - 1) * RESULTS_PER_PAGE;
+      const pageItems = lastResults.slice(startIdx, startIdx + RESULTS_PER_PAGE);
+
+      pageItems.forEach(p => {
         const added = isAdded(p.place_id);
         const card = document.createElement('div');
         card.className = 'card';
 
-        // build carousel with initial photo(s) from search
         const photos = p.photos || (p.photo_url ? [p.photo_url] : []);
         let carouselHtml;
         if (photos.length) {
           const imgsHtml = photos.map((url, i) =>
             `<img src="${url}" alt="" class="${i === 0 ? 'active' : ''}" />`
           ).join('');
-          // always show dots placeholder (will be rebuilt on lazy load)
           const dotsHtml = photos.length > 1
             ? `<div class="carouselDots">${photos.map((_, i) => `<div class="carouselDot ${i === 0 ? 'active' : ''}"></div>`).join('')}</div>`
             : '';
-          // always show nav buttons so user can trigger lazy load
           const navHtml = `<button class="carouselBtn left">‹</button><button class="carouselBtn right">›</button>`;
           carouselHtml = `<div class="carousel" data-place-id="${escapeHtml(p.place_id)}">${imgsHtml}${navHtml}${dotsHtml}</div>`;
         } else {
@@ -1027,11 +1155,9 @@
         `;
         root.appendChild(card);
 
-        // init carousel with lazy-loading
         const carouselEl = card.querySelector('.carousel');
         if (carouselEl) initCardCarousel(carouselEl);
 
-        // click card to open details
         card.style.cursor = "pointer";
         card.addEventListener("click", (e) => {
           if (e.target.closest(".addBtn") || e.target.closest(".carouselBtn")) return;
@@ -1043,6 +1169,8 @@
           btn.addEventListener('click', () => addToTrip(p));
         }
       });
+
+      renderPagination(root);
     }
 
     // interest queries + shuffle 
@@ -1104,7 +1232,8 @@
     }
 
     async function runSearch() {
-      const q = document.getElementById('q').value.trim();
+      const q = document.getElementById('q').value.trim().slice(0, 120);
+      document.getElementById('q').value = q;
       if (!q) return;
 
       const res = await fetch(API_BASE + '/places/search?q=' + encodeURIComponent(q));
@@ -1123,7 +1252,8 @@
 }
 
   async function runAiGenerate() {
-  const destination = tripState.destination || document.getElementById('q').value.trim();
+  const destination = (tripState.destination || document.getElementById('q').value.trim()).slice(0, 120);
+  document.getElementById('q').value = destination;
   if (!destination) {
     alert('Enter a destination first.');
     return;
@@ -1254,6 +1384,30 @@
         .replaceAll("'", '&#039;');
     }
 
+    function formatCharLeftText(left) {
+      if (left === 1) return '1 character left';
+      return `${left} characters left`;
+    }
+
+    function bindCharLeftCounter(inputEl, counterEl) {
+      if (!inputEl || !counterEl) return;
+      const limit = Number(inputEl.getAttribute('maxlength'));
+      if (!Number.isFinite(limit) || limit <= 0) return;
+
+      const update = () => {
+        const value = inputEl.value || '';
+        const left = Math.max(0, limit - value.length);
+        counterEl.textContent = formatCharLeftText(left);
+      };
+
+      inputEl.addEventListener('input', update);
+      update();
+    }
+
+    function setupCharLeftCounters() {
+      bindCharLeftCounter(document.getElementById('q'), document.getElementById('qCounter'));
+    }
+
     //  init from URL params 
     const params = new URLSearchParams(window.location.search);
     const qParam = params.get('q');
@@ -1271,18 +1425,22 @@
     initDays();
     renderItinerary();
     renderResults([]);
+    setupCharLeftCounters();
 
     if (destParam && interestsParam){
       document.getElementById('q').value = interestsParam.split(',').join(', ') + ' in ' + destParam;
+      setupCharLeftCounters();
       (async () => {
         const merged = await searchByInterests(destParam, interestsParam);
         renderResults(merged);
       })();
     } else if (qParam) {
       document.getElementById('q').value = qParam;
+      setupCharLeftCounters();
       runSearch();
     } else if (destParam) {
       document.getElementById('q').value = destParam;
+      setupCharLeftCounters();
       runSearch();
     }
 
