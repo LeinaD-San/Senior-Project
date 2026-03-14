@@ -440,12 +440,14 @@
         -->
 
           <div class="searchRow">
-            <input id ="q" placeholder="Seach Places (e.g., 'parks in San Antonio' or museums Brownsville')"/>
+            <input id ="q" placeholder="Seach Places (e.g., 'parks in San Antonio' or museums Brownsville')" maxlength="120" />
             <button onclick = "runSearch()">Search</button>
             <button type="button" id="aiGenerateBTN" onclick="runAiGenerate()" style="background:linear-gradient(135deg,var(--orange),var(--orange2)); color:white;">
             Auto-Generate
             </button>
           </div>
+
+          <div id="qCounter" style="margin-top:0;font-size:10px;line-height:1.1;color:rgba(11,18,32,.55);" aria-live="polite"></div>
 
 
         </div>
@@ -919,7 +921,8 @@
                 <input type="checkbox" ${p.completed ? 'checked' : ''} data-action="complete" data-id="${p.id || ''}" />
                 Completed
               </label>
-              <textarea data-action="notes" data-id="${p.id || ''}" placeholder="Notes" style="width:100%;margin-top:6px;padding:8px 10px;border-radius:12px;border:1px solid var(--border);font-size:13px;" rows="1">${escapeHtml(p.notes || '')}</textarea>
+              <textarea data-action="notes" data-id="${p.id || ''}" placeholder="Notes" style="width:100%;margin-top:6px;padding:8px 10px;border-radius:12px;border:1px solid var(--border);font-size:13px;" rows="1" maxlength="1000">${escapeHtml(p.notes || '')}</textarea>
+              <div data-action="notes-left" style="margin-top:6px;font-size:12px;color:rgba(11,18,32,.55);" aria-live="polite"></div>
             </div>
           </div>
           <div class="itemActions">
@@ -949,8 +952,10 @@
 
         const notesEl = div.querySelector('textarea[data-action="notes"]');
         if (notesEl) {
+          bindCharLeftCounter(notesEl, div.querySelector('[data-action="notes-left"]'));
           notesEl.addEventListener('blur', async (e) => {
-            const value = e.target.value;
+            const value = (e.target.value || '').slice(0, 1000);
+            e.target.value = value;
             p.notes = value;
             if (persistEnabled() && p.id) {
               await fetch(`/trips/${tripState.currentTripId}/items/${p.id}` , {
@@ -1227,7 +1232,8 @@
     }
 
     async function runSearch() {
-      const q = document.getElementById('q').value.trim();
+      const q = document.getElementById('q').value.trim().slice(0, 120);
+      document.getElementById('q').value = q;
       if (!q) return;
 
       const res = await fetch(API_BASE + '/places/search?q=' + encodeURIComponent(q));
@@ -1246,7 +1252,8 @@
 }
 
   async function runAiGenerate() {
-  const destination = tripState.destination || document.getElementById('q').value.trim();
+  const destination = (tripState.destination || document.getElementById('q').value.trim()).slice(0, 120);
+  document.getElementById('q').value = destination;
   if (!destination) {
     alert('Enter a destination first.');
     return;
@@ -1377,6 +1384,30 @@
         .replaceAll("'", '&#039;');
     }
 
+    function formatCharLeftText(left) {
+      if (left === 1) return '1 character left';
+      return `${left} characters left`;
+    }
+
+    function bindCharLeftCounter(inputEl, counterEl) {
+      if (!inputEl || !counterEl) return;
+      const limit = Number(inputEl.getAttribute('maxlength'));
+      if (!Number.isFinite(limit) || limit <= 0) return;
+
+      const update = () => {
+        const value = inputEl.value || '';
+        const left = Math.max(0, limit - value.length);
+        counterEl.textContent = formatCharLeftText(left);
+      };
+
+      inputEl.addEventListener('input', update);
+      update();
+    }
+
+    function setupCharLeftCounters() {
+      bindCharLeftCounter(document.getElementById('q'), document.getElementById('qCounter'));
+    }
+
     //  init from URL params 
     const params = new URLSearchParams(window.location.search);
     const qParam = params.get('q');
@@ -1394,18 +1425,22 @@
     initDays();
     renderItinerary();
     renderResults([]);
+    setupCharLeftCounters();
 
     if (destParam && interestsParam){
       document.getElementById('q').value = interestsParam.split(',').join(', ') + ' in ' + destParam;
+      setupCharLeftCounters();
       (async () => {
         const merged = await searchByInterests(destParam, interestsParam);
         renderResults(merged);
       })();
     } else if (qParam) {
       document.getElementById('q').value = qParam;
+      setupCharLeftCounters();
       runSearch();
     } else if (destParam) {
       document.getElementById('q').value = destParam;
+      setupCharLeftCounters();
       runSearch();
     }
 
