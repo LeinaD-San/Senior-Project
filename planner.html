@@ -384,6 +384,46 @@
       background:rgba(11,18,32,.18);cursor:pointer;
     }
     .modalCarouselDot.active{background:var(--orange)}
+
+    .suggestWrap{
+      position:relative;
+      flex:1;
+      min-width:220px;
+    }
+    .suggestList{
+      position:absolute;
+      top:calc(100% + 6px);
+      left:0;
+      right:0;
+      background:white;
+      border:1px solid var(--border);
+      border-radius:14px;
+      box-shadow:0 16px 40px rgba(11,18,32,.12);
+      z-index:50;
+      max-height:260px;
+      overflow:auto;
+    }
+    .suggestItem{
+      padding:10px 12px;
+      cursor:pointer;
+      border-bottom:1px solid rgba(11,18,32,.06);
+    }
+    .suggestItem:last-child{border-bottom:none}
+    .suggestItem:hover{
+      background:rgba(11,18,32,.04);
+    }
+    .suggestMain{
+      font-weight:800;
+      font-size:14px;
+    }
+    .suggestSub{
+      color:var(--muted);
+      font-size:12px;
+      margin-top:2px;
+    }
+    .hidden{
+      display:none;
+    }
   </style>
 </head>
 
@@ -429,6 +469,33 @@
           <div class="savedTitle">My Saved Trips</div>
           <div class="savedList" id="savedTripsList"></div>
         </div>
+        
+
+<div class="searchCard">
+  <div style="font-weight:900; font-size:15px;">Current Destination</div>
+  <div class="hint" style="margin-top:4px;">Edit your destination here. Searches will use this location.</div>
+
+  <div class="searchRow" style="margin-top:10px;">
+    <div class="suggestWrap">
+      <input
+        id="destinationInput"
+        type="text"
+        placeholder="Enter city, state"
+        maxlength="120"
+        autocomplete="off"
+      />
+      <div id="destinationSuggestions" class="suggestList hidden"></div>
+    </div>
+    <button type="button" onclick="applyDestinationChange()">Update</button>
+  </div>
+
+  <div
+    id="destinationCounter"
+    style="margin-top:0;font-size:10px;line-height:1.1;color:rgba(11,18,32,.55);"
+    aria-live="polite"
+  ></div>
+</div>
+
 
         <div class="searchCard">
 
@@ -440,7 +507,7 @@
         -->
 
           <div class="searchRow">
-            <input id ="q" placeholder="Seach Places (e.g., 'parks in San Antonio' or museums Brownsville')" maxlength="120" />
+            <input id ="q" placeholder="Search Places (e.g., 'parks in San Antonio' or museums Brownsville')" maxlength="120" />
             <button onclick = "runSearch()">Search</button>
             <button type="button" id="aiGenerateBTN" onclick="runAiGenerate()" style="background:linear-gradient(135deg,var(--orange),var(--orange2)); color:white;">
             Auto-Generate
@@ -608,6 +675,38 @@
         }
       });
     }
+
+      async function applyDestinationChange() {
+        const destinationEl = document.getElementById('destinationInput');
+        const nextDestination = (destinationEl.value || '').trim().slice(0, 120);
+        destinationEl.value = nextDestination;
+
+        if (!nextDestination) {
+          alert('Enter a destination first.');
+          return;
+        }
+
+        tripState.destination = nextDestination;
+
+        const url = new URL(window.location.href);
+        url.searchParams.set('dest', nextDestination);
+        window.history.replaceState({}, '', url.toString());
+
+        const interestsParam = url.searchParams.get('interests') || '';
+        const searchTerm = (document.getElementById('q').value || '').trim().slice(0, 120);
+
+        if (interestsParam) {
+          const merged = await searchByInterests(nextDestination, interestsParam);
+          renderResults(merged);
+          return;
+        }
+
+        if (searchTerm) {
+          await runSearch();
+        }
+      }
+
+
 
     //  carousel helper for details modal
     function buildModalCarousel(photos) {
@@ -818,6 +917,8 @@
           const trip = await authFetch(`/trips/${t.id}`);
           const maxDay = Math.max(1, ...(trip.items || []).map((i) => i.day || 1));
           tripState.destination = trip.destination || '';
+          document.getElementById('destinationInput').value = tripState.destination;
+          setupCharLeftCounters();
           tripState.activeDay = 1;
           tripState.currentTripId = trip.id;
           tripState.itemsByDay = {};
@@ -1232,28 +1333,41 @@
     }
 
     async function runSearch() {
-      const q = document.getElementById('q').value.trim().slice(0, 120);
-      document.getElementById('q').value = q;
-      if (!q) return;
+      const searchTerm = document.getElementById('q').value.trim().slice(0, 120);
+      const destination = (document.getElementById('destinationInput').value || '').trim().slice(0, 120);
 
-      const res = await fetch(API_BASE + '/places/search?q=' + encodeURIComponent(q));
+      document.getElementById('q').value = searchTerm;
+      document.getElementById('destinationInput').value = destination;
+
+      if (!destination) {
+        alert('Enter a destination first.');
+        return;
+      }
+
+      if (!searchTerm) {
+        alert('Enter something to search for.');
+        return;
+      }
+
+      tripState.destination = destination;
+
+      const fullQuery = `${searchTerm} in ${destination}`;
+
+      const res = await fetch(API_BASE + '/places/search?q=' + encodeURIComponent(fullQuery));
       if (!res.ok) {
         renderResults([]);
         alert('Search failed. Check GOOGLE_MAPS_API_KEY and backend logs.');
         return;
       }
+
       const data = await res.json();
       renderResults(data.results || []);
     }
   
 
-  function testAiButton() {
-  alert('AI button clicked');
-}
-
   async function runAiGenerate() {
-  const destination = (tripState.destination || document.getElementById('q').value.trim()).slice(0, 120);
-  document.getElementById('q').value = destination;
+  const destination = (document.getElementById('destinationInput').value || tripState.destination || '').trim().slice(0, 120);
+  document.getElementById('destinationInput').value = destination;
   if (!destination) {
     alert('Enter a destination first.');
     return;
@@ -1330,7 +1444,7 @@
         return;
       }
 
-      const destination = tripState.destination || document.getElementById('q').value.trim() || 'Destination';
+      const destination = (document.getElementById('destinationInput').value || tripState.destination || '').trim() || 'Destination';
       const title = `Trip to ${destination}`;
 
       const resTrip = await fetch('/trips', {
@@ -1384,6 +1498,90 @@
         .replaceAll("'", '&#039;');
     }
 
+
+    let destinationSuggestTimer = null;
+
+async function fetchAutocomplete(input, opts = {}) {
+  const params = new URLSearchParams();
+  params.set('input', input);
+
+  if (opts.types) params.set('types', opts.types);
+
+  const res = await fetch(`/places/autocomplete?${params.toString()}`);
+  if (!res.ok) return [];
+  const data = await res.json();
+  return data.predictions || [];
+}
+
+function renderSuggestionList(container, items, onPick) {
+  if (!container) return;
+  container.innerHTML = '';
+
+  if (!items.length) {
+    container.classList.add('hidden');
+    return;
+  }
+
+  items.forEach((item) => {
+    const row = document.createElement('div');
+    row.className = 'suggestItem';
+    row.innerHTML = `
+      <div class="suggestMain">${escapeHtml(item.main_text || item.description || '')}</div>
+      <div class="suggestSub">${escapeHtml(item.secondary_text || '')}</div>
+    `;
+    row.addEventListener('click', () => onPick(item));
+    container.appendChild(row);
+  });
+
+  container.classList.remove('hidden');
+}
+
+function hideSuggestionList(container) {
+  if (!container) return;
+  container.classList.add('hidden');
+}
+
+function cleanCityLabel(text) {
+  return String(text || '').replace(/, USA$/, '');
+}
+
+function setupDestinationAutocomplete() {
+  const input = document.getElementById('destinationInput');
+  const list = document.getElementById('destinationSuggestions');
+  if (!input || !list) return;
+
+  input.addEventListener('input', () => {
+    clearTimeout(destinationSuggestTimer);
+    const value = input.value.trim().slice(0, 120);
+
+    if (value.length < 2) {
+      hideSuggestionList(list);
+      return;
+    }
+
+    destinationSuggestTimer = setTimeout(async () => {
+      const predictions = await fetchAutocomplete(value, { types: '(cities)' });
+      renderSuggestionList(list, predictions, (item) => {
+        input.value = cleanCityLabel(item.description || item.main_text || '');
+        hideSuggestionList(list);
+        applyDestinationChange();
+      });
+    }, 250);
+  });
+
+  input.addEventListener('blur', () => {
+    setTimeout(() => hideSuggestionList(list), 150);
+  });
+
+  input.addEventListener('focus', () => {
+    const value = input.value.trim();
+    if (value.length >= 2) {
+      input.dispatchEvent(new Event('input'));
+    }
+  });
+}
+
+
     function formatCharLeftText(left) {
       if (left === 1) return '1 character left';
       return `${left} characters left`;
@@ -1406,6 +1604,7 @@
 
     function setupCharLeftCounters() {
       bindCharLeftCounter(document.getElementById('q'), document.getElementById('qCounter'));
+      bindCharLeftCounter(document.getElementById('destinationInput'), document.getElementById('destinationCounter'));
     }
 
     //  init from URL params 
@@ -1415,20 +1614,33 @@
     const daysParam = parseInt(params.get('days'));
     const interestsParam = params.get('interests');
 
-    if (destParam) tripState.destination = destParam;
-    if (daysParam && daysParam >= 1 && daysParam <= 7) {
-      tripState.days = daysParam;
-      tripState.itemsByDay = {};
-      for (let d = 1; d <= daysParam; d++) tripState.itemsByDay[d] = [];
+    const destinationInputEl = document.getElementById('destinationInput');
+
+    if (destParam) {
+      destinationInputEl.value = destParam;
+      tripState.destination = destParam;
+    }
+
+    if (destParam && interestsParam) {
+      setupCharLeftCounters();
+      (async () => {
+        const merged = await searchByInterests(destParam, interestsParam);
+        renderResults(merged);
+      })();
+    } else if (qParam) {
+      document.getElementById('q').value = qParam;
+      setupCharLeftCounters();
+      runSearch();
     }
 
     initDays();
     renderItinerary();
     renderResults([]);
     setupCharLeftCounters();
+    setupDestinationAutocomplete();
 
     if (destParam && interestsParam){
-      document.getElementById('q').value = interestsParam.split(',').join(', ') + ' in ' + destParam;
+      document.getElementById('q').value = interestsParam.split(',').join(', ');
       setupCharLeftCounters();
       (async () => {
         const merged = await searchByInterests(destParam, interestsParam);

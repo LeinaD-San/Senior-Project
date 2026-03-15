@@ -555,7 +555,40 @@ async def places_search(
     return {"query": q, "count": len(results), "results": results}
 
 
+@app.get("/places/autocomplete")
+async def places_autocomplete(
+    input: str = Query(min_lenth = 1, max_length=120),
+    types: Optional[str] = None,
+):
+    api_key = os.getenv("GOOGLE_MAPS_API_KEY")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="GOOGLE_MAPS_API_KEY is not set")
 
+    url = "https://maps.googleapis.com/maps/api/place/autocomplete/json"
+    params = {
+        "input": input,
+        "key": api_key,
+    }
+    if types:
+        params["types"] = types
+    async with httpx.AsyncClient(timeout=15)as client:
+        r = await client.get(url, params=params)
+        r.raise_for_status()
+        data= r.json()
+    status = data.get('status')
+    if status not in ('OK', "ZERO_RESULTS"):
+        status_code = 502,
+        detail={"google_status": status, 'error': data.get('error_message')},
+        
+    predictions = []
+    for p in data.get('predictions',[]):
+        predictions.append({
+            'description': p.get('destination'),
+            'place_id':p.get('place_id'),
+            'main_text':(p.get('structured_formatting') or {}).get('main_text'),
+            'secondary_text': (p.get('structured_formatting') or {}).get('secondary_text'),
+        })
+    return {'count': len(predictions), 'predictions': predictions}
 
 @app.get('/places/details/{place_id}')
 async def place_details(place_id:str):

@@ -182,6 +182,7 @@
 
     /* search bar */
     .search-bar {
+      position: relative;
       display: flex; align-items: center;
       background: var(--cream);
       border: 2px solid var(--sand-mid);
@@ -432,6 +433,40 @@
       .chip-grid { grid-template-columns: repeat(2, 1fr); }
       .hero { padding: 16px 16px 60px; }
     }
+
+    .suggestList{
+      position:absolute;
+      top:calc(100% + 6px);
+      left:0;
+      right:0;
+      background:white;
+      border:1px solid rgba(11,18,32,.12);
+      border-radius:14px;
+      box-shadow:0 16px 40px rgba(11,18,32,.12);
+      z-index:50;
+      max-height:260px;
+      overflow:auto;
+    }
+
+    .suggestItem{
+      padding:10px 12px;
+      cursor:pointer;
+      border-bottom:1px solid rgba(11,18,32,.06);
+    }
+    .suggestItem:last-child{border-bottom:none}
+    .suggestItem:hover{
+      background:rgba(11,18,32,.04);
+    }
+    .suggestMain{
+      font-weight:800;
+      font-size:14px;
+    }
+    .suggestSub{
+      color:var(--muted);
+      font-size:12px;
+      margin-top:2px;
+    }
+
   </style>
 </head>
 
@@ -467,13 +502,14 @@
       </p>
 
       <form class="search-bar" onsubmit="return false;">
-        <input id="landing-search" type="text" placeholder="Search a city or neighborhood..." maxlength="120" />
+        <input id="landing-search" type="text" placeholder="Search a city or neighborhood..." maxlength="120" autocomplete="off" />
         <button type="button" class="btn btn-primary btn-icon" onclick="handleSearch(event)">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
         </button>
+        <div id="landingSuggestions" class="suggestList hidden"></div>
       </form>
 
-      <div class="char-left char-left-tight search-counter" data-char-left-for="landing-search" aria-live="polite"></div>
+      
 
       <div>
         <button class="btn btn-outline" type="button" onclick="showScreen('plan')">
@@ -616,7 +652,7 @@
       'hidden',
       'iconic',
       'charming',
-      'histotic',
+      'historic',
       'popular',
       'trendy',
 
@@ -1127,9 +1163,49 @@
         headers: { Authorization: `Bearer ${token}` },
       }).catch(() => {});
     }
+    let landingSuggestTimer = null;
+
+    function setupLandingAutocomplete() {
+      const input = document.getElementById('landing-search');
+      const list = document.getElementById('landingSuggestions');
+      if (!input || !list) return;
+
+      input.addEventListener('input', () => {
+        clearTimeout(landingSuggestTimer);
+        const value = input.value.trim().slice(0, 120);
+
+        if (value.length < 2) {
+          hideSuggestionList(list);
+          return;
+        }
+
+        landingSuggestTimer = setTimeout(async () => {
+          const predictions = await fetchAutocomplete(value, { types: '(cities)' });
+          renderSuggestionList(list, predictions, (item) => {
+            input.value = cleanCityLabel(item.description || item.main_text || '');
+            hideSuggestionList(list);
+          });
+        }, 250);
+      });
+
+      input.addEventListener('blur', () => {
+        setTimeout(() => hideSuggestionList(list), 150);
+      });
+
+      input.addEventListener('focus', () => {
+        const value = input.value.trim();
+        if (value.length >= 2) {
+          input.dispatchEvent(new Event('input'));
+        }
+      });
+    }
+
+
 
     (async () => {
+      startRotatingWord();
       setupCharLeftCounters();
+      setupLandingAutocomplete();
       updateSignInLink();
 
       const url = new URL(window.location.href);
@@ -1151,6 +1227,61 @@
         setSignedInUi(false);
       }
     })();
+
+    async function fetchAutocomplete(input, opts = {}) {
+      const params = new URLSearchParams();
+      params.set('input', input);
+
+      if (opts.types) params.set('types', opts.types);
+
+      const res = await fetch(`/places/autocomplete?${params.toString()}`);
+      if (!res.ok) return [];
+      const data = await res.json();
+      return data.predictions || [];
+    }
+
+    function escapeHtml(str) {
+      return String(str)
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#039;');
+    }
+
+    function renderSuggestionList(container, items, onPick) {
+      if (!container) return;
+      container.innerHTML = '';
+
+      if (!items.length) {
+        container.classList.add('hidden');
+        return;
+      }
+
+      items.forEach((item) => {
+        const row = document.createElement('div');
+        row.className = 'suggestItem';
+        row.innerHTML = `
+          <div class="suggestMain">${escapeHtml(item.main_text || item.description || '')}</div>
+          <div class="suggestSub">${escapeHtml(item.secondary_text || '')}</div>
+        `;
+        row.addEventListener('click', () => onPick(item));
+        container.appendChild(row);
+      });
+
+      container.classList.remove('hidden');
+    }
+
+    function hideSuggestionList(container) {
+      if (!container) return;
+      container.classList.add('hidden');
+    }
+
+    function cleanCityLabel(text) {
+      return String(text || '').replace(/, USA$/, '');
+    }
+
+    
   </script>
 
 </body>
