@@ -1266,6 +1266,10 @@
           <div class="suggestMain">${escapeHtml(item.main_text || item.description || '')}</div>
           <div class="suggestSub">${escapeHtml(item.secondary_text || '')}</div>
         `;
+        row.addEventListener('pointerdown', (e) => {
+          e.preventDefault();
+          onPick(item);
+        });
         row.addEventListener('click', () => onPick(item));
         container.appendChild(row);
       });

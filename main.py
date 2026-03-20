@@ -596,7 +596,7 @@ async def places_search(
 
 @app.get("/places/autocomplete")
 async def places_autocomplete(
-    input: str = Query(min_lenth = 1, max_length=120),
+    input: str = Query(min_length=1, max_length=120),
     types: Optional[str] = None,
 ):
     api_key = os.getenv("GOOGLE_MAPS_API_KEY")
@@ -616,13 +616,15 @@ async def places_autocomplete(
         data= r.json()
     status = data.get('status')
     if status not in ('OK', "ZERO_RESULTS"):
-        status_code = 502,
-        detail={"google_status": status, 'error': data.get('error_message')},
+        raise HTTPException(
+            status_code=502,
+            detail={"google_status": status, 'error': data.get('error_message')},
+        )
         
     predictions = []
     for p in data.get('predictions',[]):
         predictions.append({
-            'description': p.get('destination'),
+            'description': p.get('description'),
             'place_id':p.get('place_id'),
             'main_text':(p.get('structured_formatting') or {}).get('main_text'),
             'secondary_text': (p.get('structured_formatting') or {}).get('secondary_text'),
