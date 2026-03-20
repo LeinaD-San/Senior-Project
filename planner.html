@@ -464,7 +464,10 @@
         </div>
 
         <div class="panelFoot">
-          <button class="primary" id="saveBtn" onclick="saveTrip()" disabled>Save Trip</button>
+          <div style="display:flex; gap:10px;">
+            <button type="button" onclick="clearCurrentDay()" style="flex:1; border:none; padding:12px 14px; border-radius:14px; background:rgba(11,18,32,.08); font-weight:900; cursor:pointer;">Clear Day</button>
+            <button class="primary" id="saveBtn" onclick="saveTrip()" disabled style="flex:1">Save Trip</button>
+          </div>
         </div>
       </div>
 
@@ -1116,13 +1119,25 @@
         });
 
         deleteBtn.addEventListener('click', async () => {
-          await authFetch(`/trips/${t.id}`, { method: 'DELETE' });
-          await loadSavedTrips();
+          openUiModal({
+            title: 'Delete saved trip?',
+            message: `Delete “${escapeHtml(t.title || 'Trip')}”? This cannot be undone.`,
+            actions: [
+              { label: 'Cancel', onClick: () => closeUiModal() },
+              { label: 'Delete', variant: 'primary', onClick: async () => {
+                  closeUiModal();
+                  await authFetch(`/trips/${t.id}`, { method: 'DELETE' }).catch(() => {});
+                  await loadSavedTrips().catch(() => {});
+                }
+              },
+            ],
+          });
         });
 
         list.appendChild(row);
       });
     }
+
 
     function initDays() {
       const row = document.getElementById('dayRow');
@@ -1131,7 +1146,7 @@
         const btn = document.createElement('button');
         btn.className = 'dayBtn' + (d === tripState.activeDay ? ' active' : '');
         btn.textContent = 'Day ' + d;
-        btn.onclick = () => { tripState.activeDay = d; renderDays(); renderItinerary(); };
+        btn.onclick = () => { tripState.activeDay = d; renderDays(); renderItinerary(); renderResultsPage(); };
         row.appendChild(btn);
       }
     }
@@ -1324,7 +1339,7 @@
           message: `${place.name} is already scheduled on Day ${existing.day}.`,
           actions: [
             { label: 'Cancel', onClick: () => closeUiModal() },
-            { label: `Go to Day ${existing.day}`, onClick: () => { closeUiModal(); tripState.activeDay = existing.day; renderDays(); renderItinerary(); } },
+            { label: `Go to Day ${existing.day}`, onClick: () => { closeUiModal(); tripState.activeDay = existing.day; renderDays(); renderItinerary(); renderResultsPage(); } },
             { label: 'Add anyway', variant: 'primary', onClick: () => { closeUiModal(); addToTripConfirmed(place); } },
           ],
         });
@@ -1354,6 +1369,42 @@
           });
         }
       }
+    }
+
+    async function clearCurrentDay() {
+      const day = tripState.activeDay;
+      const items = tripState.itemsByDay[day] || [];
+      if (!items.length) return;
+
+      openUiModal({
+        title: `Clear Day ${day}?`,
+        message: `This will remove ${items.length} place${items.length === 1 ? '' : 's'} from Day ${day}.`,
+        actions: [
+          { label: 'Cancel', onClick: () => closeUiModal() },
+          {
+            label: 'Clear day',
+            variant: 'primary',
+            onClick: async () => {
+              closeUiModal();
+              const toDelete = [...items];
+              tripState.itemsByDay[day] = [];
+              renderItinerary();
+              renderResultsPage();
+
+              if (persistEnabled()) {
+                await Promise.allSettled(
+                  toDelete
+                    .filter((it) => it?.id)
+                    .map((it) => fetch(`/trips/${tripState.currentTripId}/items/${it.id}`, {
+                      method: 'DELETE',
+                      headers: { Authorization: `Bearer ${getToken()}` },
+                    }))
+                );
+              }
+            },
+          },
+        ],
+      });
     }
 
     async function removeFromTrip(placeId) {
@@ -1756,6 +1807,13 @@
 
       uiNotify('Saved', 'Trip saved!');
       await loadSavedTrips();
+
+      tripState.currentTripId = null;
+      for (let d = 1; d <= tripState.days; d++) tripState.itemsByDay[d] = [];
+      tripState.activeDay = 1;
+      renderDays();
+      renderItinerary();
+      renderResultsPage();
     }
 
     function escapeHtml(str) {
@@ -1822,6 +1880,136 @@ function setupDestinationAutocomplete() {
   input.addEventListener('input', () => {
     clearTimeout(destinationSuggestTimer);
     const value = input.value.trim().slice(0, 120);
+
+    if (value.length < 2) {
+      hideSuggestionList(list);
+      return;
+    }
+
+    destinationSuggestTimer = setTimeout(async () => {
+      const predictions = await fetchAutocomplete(value, { types: '(cities)' });
+      renderSuggestionList(list, predictions, (item) => {
+        input.value = cleanCityLabel(item.description || item.main_text || '');
+        hideSuggestionList(list);
+        applyDestinationChange();
+      });
+    }, 250);
+  });
+
+  input.addEventListener('blur', () => {
+    setTimeout(() => hideSuggestionList(list), 150);
+  });
+
+  input.addEventListener('focus', () => {
+    const value = input.value.trim();
+    if (value.length >= 2) {
+      input.dispatchEvent(new Event('input'));
+    }
+  });
+}
+
+
+    function formatCharLeftText(left) {
+      if (left === 1) return '1 character left';
+      return `${left} characters left`;
+    }
+
+    function bindCharLeftCounter(inputEl, counterEl) {
+      if (!inputEl || !counterEl) return;
+      const limit = Number(inputEl.getAttribute('maxlength'));
+      if (!Number.isFinite(limit) || limit <= 0) return;
+
+      const update = () => {
+        const value = inputEl.value || '';
+        const left = Math.max(0, limit - value.length);
+        counterEl.textContent = formatCharLeftText(left);
+      };
+
+      inputEl.addEventListener('input', update);
+      update();
+    }
+
+    function setupCharLeftCounters() {
+      bindCharLeftCounter(document.getElementById('q'), document.getElementById('qCounter'));
+      bindCharLeftCounter(document.getElementById('destinationInput'), document.getElementById('destinationCounter'));
+
+    }
+
+    //  init from URL params 
+    const params = new URLSearchParams(window.location.search);
+const qParam = params.get('q');
+const destParam = params.get('dest');
+const daysParam = parseInt(params.get('days'));
+const interestsParam = params.get('interests');
+
+if (daysParam && daysParam >= 1 && daysParam <= 7) {
+  tripState.days = daysParam;
+  tripState.itemsByDay = {};
+  for (let d = 1; d <= daysParam; d++) tripState.itemsByDay[d] = [];
+}
+
+    const destinationInputEl = document.getElementById('destinationInput');
+
+if (destParam) {
+  destinationInputEl.value = destParam;
+  tripState.destination = destParam;
+}
+
+setTripTitle(tripState.destination ? `Trip to ${tripState.destination}` : 'Trip');
+
+initDays();
+renderItinerary();
+renderResults([]);
+setupCharLeftCounters();
+setupDestinationAutocomplete();
+
+if (destParam && interestsParam) {
+  document.getElementById('q').value = interestsParam.split(',').join(', ');
+  (async () => {
+    const merged = await searchByInterests(destParam, interestsParam);
+    renderResults(merged);
+  })();
+} else if (qParam) {
+  document.getElementById('q').value = qParam;
+  runSearch();
+}
+
+updateSignInLink();
+setSignedInUi(!!getToken());
+if (getToken()) {
+  loadSavedTrips().catch(() => {});
+}
+
+
+document.getElementById('tabSavedTrips')?.addEventListener('click', () => setTripsTab('saved'));
+document.getElementById('tabHistory')?.addEventListener('click', () => setTripsTab('history'));
+setTripsTab('saved');
+
+const autogenParam = params.get('autogen');
+if (autogenParam == '1') {
+  setTimeout(() => {
+    runAiGenerate();
+  }, 250);
+}
+  </script>
+</body>
+</html>
+ignInLink();
+setSignedInUi(!!getToken());
+if (getToken()) {
+  loadSavedTrips().catch(() => {});
+}
+
+const autogenParam = params.get('autogen');
+if (autogenParam == '1') {
+  setTimeout(() => {
+    runAiGenerate();
+  }, 250);
+}
+  </script>
+</body>
+</html>
+ = input.value.trim().slice(0, 120);
 
     if (value.length < 2) {
       hideSuggestionList(list);
