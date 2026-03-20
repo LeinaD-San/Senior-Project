@@ -535,7 +535,10 @@
 
       <div class="field">
         <label for="dest">Destination</label>
-        <input id="dest" type="text" placeholder="e.g. Brownsville, TX" maxlength="120" />
+        <div style="position:relative;">
+          <input id="dest" type="text" placeholder="e.g. Brownsville, TX" maxlength="120" autocomplete="off" />
+          <div id="planSuggestions" class="suggestList hidden"></div>
+        </div>
         <div class="char-left char-left-tight" data-char-left-for="dest" aria-live="polite"></div>
       </div>
 
@@ -906,13 +909,13 @@
     function goToPlannerWithInterests() {
       const destination = document.getElementById("dest")?.value?.trim();
       if (!destination) {
-        alert("Enter a destination first.");
+        openUiModal({ title: 'Missing destination', message: 'Enter a destination first.' });
         return;
       }
 
       const interests = [...selectedInterests]; // this is your Set
       if (!interests.length) {
-        alert("Select at least one interest.");
+        openUiModal({ title: 'Missing interests', message: 'Select at least one interest.' });
         return;
       }
 
@@ -929,7 +932,7 @@
       const interests = [...selectedInterests].join(',');
 
       if (!dest) {
-        alert('Enter a destination first.');
+        openUiModal({ title: 'Missing destination', message: 'Enter a destination first.' });
         return;
       }
 
@@ -1117,7 +1120,7 @@
        * }
        */
 
-      alert('Trip saved! (connect to backend to actually save)');
+      openUiModal({ title: 'Saved', message: 'Trip saved!' });
     }
     
     //fucntion to get info from landing page to planner page 
@@ -1201,12 +1204,50 @@
       });
     }
 
+    let planSuggestTimer = null;
+
+    function setupPlanAutocomplete() {
+      const input = document.getElementById('dest');
+      const list = document.getElementById('planSuggestions');
+      if (!input || !list) return;
+
+      input.addEventListener('input', () => {
+        clearTimeout(planSuggestTimer);
+        const value = input.value.trim().slice(0, 120);
+
+        if (value.length < 2) {
+          hideSuggestionList(list);
+          return;
+        }
+
+        planSuggestTimer = setTimeout(async () => {
+          const predictions = await fetchAutocomplete(value, { types: '(cities)' });
+          renderSuggestionList(list, predictions, (item) => {
+            input.value = cleanCityLabel(item.description || item.main_text || '');
+            hideSuggestionList(list);
+          });
+        }, 250);
+      });
+
+      input.addEventListener('blur', () => {
+        setTimeout(() => hideSuggestionList(list), 150);
+      });
+
+      input.addEventListener('focus', () => {
+        const value = input.value.trim();
+        if (value.length >= 2) {
+          input.dispatchEvent(new Event('input'));
+        }
+      });
+    }
+
 
 
     (async () => {
       startRotatingWord();
       setupCharLeftCounters();
       setupLandingAutocomplete();
+      setupPlanAutocomplete();
       updateSignInLink();
 
       const url = new URL(window.location.href);
@@ -1247,6 +1288,60 @@
         .replaceAll('<', '&lt;')
         .replaceAll('>', '&gt;')
         .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#039;');
+    }
+
+    function renderSuggestionList(container, items, onPick) {
+      if (!container) return;
+      container.innerHTML = '';
+
+      if (!items.length) {
+        container.classList.add('hidden');
+        return;
+      }
+
+      items.forEach((item) => {
+        const row = document.createElement('div');
+        row.className = 'suggestItem';
+        row.innerHTML = `
+          <div class="suggestMain">${escapeHtml(item.main_text || item.description || '')}</div>
+          <div class="suggestSub">${escapeHtml(item.secondary_text || '')}</div>
+        `;
+        row.addEventListener('click', () => onPick(item));
+        container.appendChild(row);
+      });
+
+      container.classList.remove('hidden');
+    }
+
+    function hideSuggestionList(container) {
+      if (!container) return;
+      container.classList.add('hidden');
+    }
+
+    function cleanCityLabel(text) {
+      return String(text || '').replace(/, USA$/, '');
+    }
+
+    
+  </script>
+
+  <div id="uiModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:10000; padding:18px; overflow:auto;">
+    <div style="max-width:560px; margin:40px auto; background:white; border-radius:16px; overflow:hidden; box-shadow:0 18px 48px rgba(11,18,32,.22);">
+      <div style="display:flex; justify-content:space-between; align-items:center; padding:14px 16px; border-bottom:1px solid rgba(11,18,32,.12);">
+        <div style="font-weight:900" id="uiModalTitle">Heads up</div>
+        <button type="button" onclick="closeUiModal()" style="border:none; background:transparent; font-size:18px; cursor:pointer;">✕</button>
+      </div>
+      <div style="padding:16px; color:rgba(11,18,32,.78); font-size:14px; line-height:1.45;" id="uiModalBody"></div>
+      <div style="display:flex; justify-content:flex-end; padding:14px 16px; border-top:1px solid rgba(11,18,32,.12);">
+        <button type="button" onclick="closeUiModal()" class="btn btn-primary">OK</button>
+      </div>
+    </div>
+  </div>
+
+</body>
+</html>
+ '&quot;')
         .replaceAll("'", '&#039;');
     }
 
