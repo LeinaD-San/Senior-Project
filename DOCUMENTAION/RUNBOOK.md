@@ -16,7 +16,8 @@ cp .env.example .env
 Set at least:
 
 - `GOOGLE_MAPS_API_KEY` (required for Places endpoints)
-- `GOOGLE_MAPS_JS_API_KEY` (required for the landing page map; if omitted it falls back to `GOOGLE_MAPS_API_KEY`)
+- `GOOGLE_MAPS_JS_API_KEY` (required for the live map UI; if omitted it falls back to `GOOGLE_MAPS_API_KEY`)
+- `OPENAI_API_KEY` (required for `/ai/*` endpoints)
 
 ## 2) Start Postgres
 

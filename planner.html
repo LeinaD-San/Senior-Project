@@ -1001,8 +1001,40 @@
       return localStorage.getItem('tragent_token');
     }
 
+    function savePendingTripDraft(nextUrl) {
+      const destination = (document.getElementById('destinationInput').value || tripState.destination || '').trim();
+      const draft = {
+        destination,
+        days: tripState.days,
+        itemsByDay: tripState.itemsByDay,
+        nextUrl,
+        createdAt: Date.now(),
+      };
+      localStorage.setItem('tragent_pending_trip', JSON.stringify(draft));
+    }
+
+    function readPendingTripDraft() {
+      const raw = localStorage.getItem('tragent_pending_trip');
+      if (!raw) return null;
+      try {
+        return JSON.parse(raw);
+      } catch {
+        return null;
+      }
+    }
+
+    function clearPendingTripDraft() {
+      localStorage.removeItem('tragent_pending_trip');
+    }
+
     function currentNextUrl() {
       return window.location.pathname + window.location.search;
+    }
+
+    function currentNextUrlWithAutosave() {
+      const url = new URL(window.location.href);
+      url.searchParams.set('autosave', '1');
+      return url.pathname + url.search;
     }
 
     function updateSignInLink() {
@@ -1757,7 +1789,9 @@
     async function saveTrip() {
       const token = getToken();
       if (!token) {
-        window.location.href = `/login?next=${encodeURIComponent(currentNextUrl())}`;
+        const nextUrl = currentNextUrlWithAutosave();
+        savePendingTripDraft(nextUrl);
+        window.location.href = `/login?next=${encodeURIComponent(nextUrl)}`;
         return;
       }
 
@@ -1772,7 +1806,9 @@
       });
       const trip = await resTrip.json().catch(() => ({}));
       if (!resTrip.ok) {
-        window.location.href = `/login?next=${encodeURIComponent(currentNextUrl())}`;
+        const nextUrl = currentNextUrlWithAutosave();
+        savePendingTripDraft(nextUrl);
+        window.location.href = `/login?next=${encodeURIComponent(nextUrl)}`;
         return;
       }
 
@@ -1808,6 +1844,13 @@
       uiNotify('Saved', 'Trip saved!');
       await loadSavedTrips();
 
+      clearPendingTripDraft();
+
+      const url = new URL(window.location.href);
+      if (url.searchParams.get('autosave') === '1') {
+        url.searchParams.delete('autosave');
+        window.history.replaceState({}, '', url.toString());
+      }
       tripState.currentTripId = null;
       for (let d = 1; d <= tripState.days; d++) tripState.itemsByDay[d] = [];
       tripState.activeDay = 1;
@@ -1856,6 +1899,10 @@ function renderSuggestionList(container, items, onPick) {
       <div class="suggestMain">${escapeHtml(item.main_text || item.description || '')}</div>
       <div class="suggestSub">${escapeHtml(item.secondary_text || '')}</div>
     `;
+    row.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      onPick(item);
+    });
     row.addEventListener('click', () => onPick(item));
     container.appendChild(row);
   });
