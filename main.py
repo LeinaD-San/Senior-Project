@@ -16,6 +16,7 @@ from database import engine, SessionLocal
 from sqlalchemy.orm import Session
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.exc import OperationalError
+from sqlalchemy import text
 
 from pathlib import Path
 
@@ -65,6 +66,9 @@ app.add_middleware(
 def on_startup():
     try:
         models.Base.metadata.create_all(bind=engine)
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE trip_item ADD COLUMN IF NOT EXISTS arrival_time VARCHAR"))
+            conn.execute(text("ALTER TABLE trip_item ADD COLUMN IF NOT EXISTS departure_time VARCHAR"))
     except OperationalError: 
         print("ABORT ABORT, MAKE SURE YOU START WITH THE: docker compose up -d : OR ELSE THERE WILL BE ISSUES")
 
@@ -82,6 +86,10 @@ db_dependency = Annotated[Session, Depends(get_db)]
 class TripCreate(BaseModel):
     title: str = Field(min_length=1, max_length=200)
     destination: str = Field(min_length=1, max_length=200)
+
+
+class TripUpdate(BaseModel):
+    title: str = Field(min_length=1, max_length=200)
 
 
 class AuthPayload(BaseModel):
@@ -103,10 +111,15 @@ class TripItemCreate(BaseModel):
     address: Optional[str] = None
     rating: Optional[float] = None
 
+    arrival_time: Optional[str] = Field(default=None, max_length=5)
+    departure_time: Optional[str] = Field(default=None, max_length=5)
+
 
 class TripItemUpdate(BaseModel):
     notes: Optional[str] = Field(default=None, max_length=1000)
     completed: Optional[bool] = None
+    arrival_time: Optional[str] = Field(default=None, max_length=5)
+    departure_time: Optional[str] = Field(default=None, max_length=5)
 
 class ItineraryRequest(BaseModel):
     destination: str = Field(min_length=1, max_length=120)
@@ -287,6 +300,19 @@ def list_trips(db: db_dependency, user: models.User = Depends(get_current_user))
     ]
 
 
+@app.patch("/trips/{trip_id}")
+def update_trip(trip_id: int, payload: TripUpdate, db: db_dependency, user: models.User = Depends(get_current_user)):
+    trip = db.get(models.Trip, trip_id)
+    if not trip:
+        raise HTTPException(status_code=404, detail="Trip not found")
+    if trip.user_id != user.id:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    trip.title = payload.title
+    db.commit()
+    db.refresh(trip)
+    return {"id": trip.id, "title": trip.title, "destination": trip.destination}
+
+
 @app.post("/trips/{trip_id}/items")
 def add_trip_item(trip_id: int, payload: TripItemCreate, db: db_dependency, user: models.User = Depends(get_current_user)):
     trip = db.get(models.Trip, trip_id)
@@ -319,6 +345,8 @@ def add_trip_item(trip_id: int, payload: TripItemCreate, db: db_dependency, user
         lng=payload.lng,
         address =payload.address,
         rating=payload.rating,
+        arrival_time=payload.arrival_time,
+        departure_time=payload.departure_time,
     )
     db.add(item)
     db.commit()
@@ -336,6 +364,8 @@ def add_trip_item(trip_id: int, payload: TripItemCreate, db: db_dependency, user
         "lng": item.lng,
         "address": item.address,
         "rating": item.rating,
+        "arrival_time": item.arrival_time,
+        "departure_time": item.departure_time,
     }
 
 
@@ -370,6 +400,8 @@ def get_trip(trip_id: int, db: db_dependency, user: models.User = Depends(get_cu
                 "lng": i.lng,
                 "address": i.address,
                 "rating": i.rating,
+                "arrival_time": i.arrival_time,
+                "departure_time": i.departure_time,
             }
             for i in items
         ],
@@ -427,6 +459,10 @@ def update_trip_item(
         item.notes = updates['notes']
     if 'completed' in updates:
         item.completed = 1 if updates['completed'] else 0
+    if 'arrival_time' in updates:
+        item.arrival_time = updates['arrival_time']
+    if 'departure_time' in updates:
+        item.departure_time = updates['departure_time']
     db.commit()
     db.refresh(item)
     return {
@@ -438,6 +474,8 @@ def update_trip_item(
         'name': item.name,
         'notes': item.notes,
         'completed': bool(item.completed),
+        'arrival_time': item.arrival_time,
+        'departure_time': item.departure_time,
     }
 
 @app.put("/trips/{trip_id}/days/{day}/reorder")
