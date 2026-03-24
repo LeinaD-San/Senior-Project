@@ -155,6 +155,24 @@
       font-weight: 500;
     }
 
+    .rotating-word {
+      display: inline-block;
+      min-width: 12ch;
+      transition: opacity 220ms ease, transform 220ms ease;
+      will-change: opacity, transform;
+    }
+
+    .rotating-word.is-exiting {
+      opacity: 0;
+      transform: translateY(-0.15em);
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .rotating-word {
+        transition: none;
+      }
+    }
+
     .hero-sub {
       font-size: 18px; line-height: 1.65;
       color: var(--ink-soft);
@@ -164,6 +182,7 @@
 
     /* search bar */
     .search-bar {
+      position: relative;
       display: flex; align-items: center;
       background: var(--cream);
       border: 2px solid var(--sand-mid);
@@ -171,6 +190,35 @@
       padding: 5px 5px 5px 24px;
       width: 100%; max-width: 500px;
       transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    .char-left {
+      font-size: 10px;
+      color: rgba(11, 18, 32, 0.55);
+      margin-top: 0;
+      text-align: left;
+      width: 100%;
+      max-width: 500px;
+      padding-left: 0;
+      line-height: 1.1;
+    }
+
+    .char-left.char-left-tight {
+      margin-top: 0;
+    }
+
+    .char-left.search-counter {
+      padding-left: 24px;
+    }
+
+    .note-wrap {
+      width: 100%;
+    }
+
+    .note-wrap .char-left {
+      max-width: none;
+      padding-left: 0;
+      margin-top: 2px;
     }
     .search-bar:focus-within {
       border-color: var(--teal);
@@ -385,6 +433,40 @@
       .chip-grid { grid-template-columns: repeat(2, 1fr); }
       .hero { padding: 16px 16px 60px; }
     }
+
+    .suggestList{
+      position:absolute;
+      top:calc(100% + 6px);
+      left:0;
+      right:0;
+      background:white;
+      border:1px solid rgba(11,18,32,.12);
+      border-radius:14px;
+      box-shadow:0 16px 40px rgba(11,18,32,.12);
+      z-index:50;
+      max-height:260px;
+      overflow:auto;
+    }
+
+    .suggestItem{
+      padding:10px 12px;
+      cursor:pointer;
+      border-bottom:1px solid rgba(11,18,32,.06);
+    }
+    .suggestItem:last-child{border-bottom:none}
+    .suggestItem:hover{
+      background:rgba(11,18,32,.04);
+    }
+    .suggestMain{
+      font-weight:800;
+      font-size:14px;
+    }
+    .suggestSub{
+      color:var(--muted);
+      font-size:12px;
+      margin-top:2px;
+    }
+
   </style>
 </head>
 
@@ -412,7 +494,7 @@
 
     <div class="hero">
       <h1 >
-        Find your next<br>favorite <em>local spot</em>
+        Find your next<br><span class="rotating-word" id="rotating-word">favorite</span> <em>local spot</em>
       </h1>
 
       <p class="hero-sub">
@@ -420,11 +502,14 @@
       </p>
 
       <form class="search-bar" onsubmit="return false;">
-        <input id="landing-search" type="text" placeholder="Search a city or neighborhood..." />
+        <input id="landing-search" type="text" placeholder="Search a city or neighborhood..." maxlength="120" autocomplete="off" />
         <button type="button" class="btn btn-primary btn-icon" onclick="handleSearch(event)">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
         </button>
+        <div id="landingSuggestions" class="suggestList hidden"></div>
       </form>
+
+      
 
       <div>
         <button class="btn btn-outline" type="button" onclick="openPersonalizationModal()">
@@ -463,7 +548,11 @@
 
       <div class="field">
         <label for="dest">Destination</label>
-        <input id="dest" type="text" placeholder="e.g. Brownsville, TX" />
+        <div style="position:relative;">
+          <input id="dest" type="text" placeholder="e.g. Brownsville, TX" maxlength="120" autocomplete="off" />
+          <div id="planSuggestions" class="suggestList hidden"></div>
+        </div>
+        <div class="char-left char-left-tight" data-char-left-for="dest" aria-live="polite"></div>
       </div>
 
       <div class="field">
@@ -488,6 +577,16 @@
         <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L13.5 8.5L20 10L13.5 11.5L12 18L10.5 11.5L4 10L10.5 8.5Z"/></svg>
         Find places
       </button>
+
+      <button class="btn btn-outline" style="width:100%;margin-top:10px" onclick="goToPlannerWithAi()">
+  AI Auto-Generate Trip
+      </button>
+      <p style="margin-top:10px;text-align:center;color:var(--ink-soft);font-size:13px;line-height:1.5;">
+  Unsure what you want to do? Let trAgent generate your trip for you.
+      </p>
+
+
+
     </div>
   </div>
 
@@ -637,6 +736,23 @@
     // backend url
     const API_BASE = 'http://localhost:8000';
 
+    const ROTATING_WORDS = [
+      'favorite',
+      'new',
+      'fun',
+      'exciting',
+      'adventurous',
+      'scenic',
+      'cozy',
+      'hidden',
+      'iconic',
+      'charming',
+      'historic',
+      'popular',
+      'trendy',
+
+    ];
+
     // interest options
     const INTERESTS = [
       { id: 'food',     label: 'Food',     emoji: '🍽' },
@@ -650,6 +766,29 @@
     ];
 
     const selectedInterests = new Set();
+//revolving word function
+    function startRotatingWord() {
+      const el = document.getElementById('rotating-word');
+      if (!el) return;
+
+      const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      if (reducedMotion) return;
+
+      const words = ROTATING_WORDS.filter(Boolean);
+      if (words.length <= 1) return;
+
+      let idx = 0;
+      el.textContent = words[idx];
+
+      window.setInterval(() => {
+        idx = (idx + 1) % words.length;
+        el.classList.add('is-exiting');
+        window.setTimeout(() => {
+          el.textContent = words[idx];
+          el.classList.remove('is-exiting');
+        }, 220);
+      }, 1350);
+    }
 
     // Build interest chips
     const chipGrid = document.getElementById('chip-grid');
@@ -718,10 +857,83 @@
       window.scrollTo(0, 0);
     }
 
+    startRotatingWord();
+    function formatCharLeftText(left) {
+      if (left === 1) return '1 character left';
+      return `${left} characters left`;
+    }
+
+    function bindCharLeftCounter(inputEl, counterEl) {
+      if (!inputEl || !counterEl) return;
+      const limit = Number(inputEl.getAttribute('maxlength'));
+      if (!Number.isFinite(limit) || limit <= 0) return;
+
+      const update = () => {
+        const value = inputEl.value || '';
+        const left = Math.max(0, limit - value.length);
+        counterEl.textContent = formatCharLeftText(left);
+      };
+
+      inputEl.addEventListener('input', update);
+      update();
+    }
+
+    function setupCharLeftCounters() {
+      document.querySelectorAll('[data-char-left-for]').forEach((counterEl) => {
+        const id = counterEl.getAttribute('data-char-left-for');
+        if (id === 'note') return;
+        const inputEl = document.getElementById(id);
+        bindCharLeftCounter(inputEl, counterEl);
+      });
+
+      document.querySelectorAll('.note-wrap').forEach((wrap) => {
+        const inputEl = wrap.querySelector('textarea.note-input');
+        const counterEl = wrap.querySelector('[data-char-left-for="note"]');
+        bindCharLeftCounter(inputEl, counterEl);
+      });
+    }
+
+    startRotatingWord();
+    function formatCharLeftText(left) {
+      if (left === 1) return '1 character left';
+      return `${left} characters left`;
+    }
+
+    function bindCharLeftCounter(inputEl, counterEl) {
+      if (!inputEl || !counterEl) return;
+      const limit = Number(inputEl.getAttribute('maxlength'));
+      if (!Number.isFinite(limit) || limit <= 0) return;
+
+      const update = () => {
+        const value = inputEl.value || '';
+        const left = Math.max(0, limit - value.length);
+        counterEl.textContent = formatCharLeftText(left);
+      };
+
+      inputEl.addEventListener('input', update);
+      update();
+    }
+
+    function setupCharLeftCounters() {
+      document.querySelectorAll('[data-char-left-for]').forEach((counterEl) => {
+        const id = counterEl.getAttribute('data-char-left-for');
+        if (id === 'note') return;
+        const inputEl = document.getElementById(id);
+        bindCharLeftCounter(inputEl, counterEl);
+      });
+
+      document.querySelectorAll('.note-wrap').forEach((wrap) => {
+        const inputEl = wrap.querySelector('textarea.note-input');
+        const counterEl = wrap.querySelector('[data-char-left-for="note"]');
+        bindCharLeftCounter(inputEl, counterEl);
+      });
+    }
+
     /* handle search from landing page
     function handleSearch(e) {
       e.preventDefault();
-      const query = document.getElementById('landing-search').value.trim();
+      const query = document.getElementById('landing-search').value.trim().slice(0, 120);
+      document.getElementById('landing-search').value = query;
       if (!query) return;
       const destEl = document.getElementById('dest');
       if (destEl) destEl.value = query;
@@ -875,13 +1087,13 @@
     function goToPlannerWithInterests() {
       const destination = document.getElementById("dest")?.value?.trim();
       if (!destination) {
-        alert("Enter a destination first.");
+        openUiModal({ title: 'Missing destination', message: 'Enter a destination first.' });
         return;
       }
 
       const interests = [...selectedInterests]; // this is your Set
       if (!interests.length) {
-        alert("Select at least one interest.");
+        openUiModal({ title: 'Missing interests', message: 'Select at least one interest.' });
         return;
       }
 
@@ -890,6 +1102,23 @@
         "&interests=" + encodeURIComponent(interests.join(","));
 
       window.location.href = url;
+    }
+
+    function goToPlannerWithAi() {
+      const dest = document.getElementById('dest').value.trim();
+      const days = document.getElementById('days').value;
+      const interests = [...selectedInterests].join(',');
+
+      if (!dest) {
+        openUiModal({ title: 'Missing destination', message: 'Enter a destination first.' });
+        return;
+      }
+
+      window.location.href =
+        '/planner?dest=' + encodeURIComponent(dest) +
+        '&days=' + encodeURIComponent(days) +
+        '&interests=' + encodeURIComponent(interests) +
+        '&autogen=1';
     }
 
     async function fetchPlaces(destination, interestId) {
@@ -1013,7 +1242,10 @@
               <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
               ${stop.rating}
             </div>
-            <textarea class="note-input" rows="1" placeholder="Add a note…"></textarea>
+            <div class="note-wrap">
+              <textarea class="note-input" rows="1" placeholder="Add a note…" maxlength="1000"></textarea>
+              <div class="char-left" data-char-left-for="note" aria-live="polite"></div>
+            </div>
           </div>
           <div class="stop-actions">
             <button title="Remove stop" onclick="removeStop('${stop.place_id}')">
@@ -1023,6 +1255,8 @@
         `;
         list.appendChild(div);
       });
+
+      setupCharLeftCounters();
     }
 
     // remove a stop from the list
@@ -1064,7 +1298,7 @@
        * }
        */
 
-      alert('Trip saved! (connect to backend to actually save)');
+      openUiModal({ title: 'Saved', message: 'Trip saved!' });
     }
     
     //fucntion to get info from landing page to planner page 
@@ -1111,8 +1345,87 @@
         headers: { Authorization: `Bearer ${token}` },
       }).catch(() => {});
     }
+    let landingSuggestTimer = null;
+
+    function setupLandingAutocomplete() {
+      const input = document.getElementById('landing-search');
+      const list = document.getElementById('landingSuggestions');
+      if (!input || !list) return;
+
+      input.addEventListener('input', () => {
+        clearTimeout(landingSuggestTimer);
+        const value = input.value.trim().slice(0, 120);
+
+        if (value.length < 2) {
+          hideSuggestionList(list);
+          return;
+        }
+
+        landingSuggestTimer = setTimeout(async () => {
+          const predictions = await fetchAutocomplete(value, { types: '(cities)' });
+          renderSuggestionList(list, predictions, (item) => {
+            input.value = cleanCityLabel(item.description || item.main_text || '');
+            hideSuggestionList(list);
+          });
+        }, 250);
+      });
+
+      input.addEventListener('blur', () => {
+        setTimeout(() => hideSuggestionList(list), 150);
+      });
+
+      input.addEventListener('focus', () => {
+        const value = input.value.trim();
+        if (value.length >= 2) {
+          input.dispatchEvent(new Event('input'));
+        }
+      });
+    }
+
+    let planSuggestTimer = null;
+
+    function setupPlanAutocomplete() {
+      const input = document.getElementById('dest');
+      const list = document.getElementById('planSuggestions');
+      if (!input || !list) return;
+
+      input.addEventListener('input', () => {
+        clearTimeout(planSuggestTimer);
+        const value = input.value.trim().slice(0, 120);
+
+        if (value.length < 2) {
+          hideSuggestionList(list);
+          return;
+        }
+
+        planSuggestTimer = setTimeout(async () => {
+          const predictions = await fetchAutocomplete(value, { types: '(cities)' });
+          renderSuggestionList(list, predictions, (item) => {
+            input.value = cleanCityLabel(item.description || item.main_text || '');
+            hideSuggestionList(list);
+          });
+        }, 250);
+      });
+
+      input.addEventListener('blur', () => {
+        setTimeout(() => hideSuggestionList(list), 150);
+      });
+
+      input.addEventListener('focus', () => {
+        const value = input.value.trim();
+        if (value.length >= 2) {
+          input.dispatchEvent(new Event('input'));
+        }
+      });
+    }
+
+
 
     (async () => {
+      startRotatingWord();
+      setupCharLeftCounters();
+      setupLandingAutocomplete();
+      setupPlanAutocomplete();
       updateSignInLink();
       renderPersonalizationSummary();
 
@@ -1135,6 +1448,65 @@
         setSignedInUi(false);
       }
     })();
+
+    async function fetchAutocomplete(input, opts = {}) {
+      const params = new URLSearchParams();
+      params.set('input', input);
+
+      if (opts.types) params.set('types', opts.types);
+
+      const res = await fetch(`/places/autocomplete?${params.toString()}`);
+      if (!res.ok) return [];
+      const data = await res.json();
+      return data.predictions || [];
+    }
+
+    function escapeHtml(str) {
+      return String(str)
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#039;');
+    }
+
+    function renderSuggestionList(container, items, onPick) {
+      if (!container) return;
+      container.innerHTML = '';
+
+      if (!items.length) {
+        container.classList.add('hidden');
+        return;
+      }
+
+      items.forEach((item) => {
+        const row = document.createElement('div');
+        row.className = 'suggestItem';
+        row.innerHTML = `
+          <div class="suggestMain">${escapeHtml(item.main_text || item.description || '')}</div>
+          <div class="suggestSub">${escapeHtml(item.secondary_text || '')}</div>
+        `;
+        row.addEventListener('pointerdown', (e) => {
+          e.preventDefault();
+          onPick(item);
+        });
+        row.addEventListener('click', () => onPick(item));
+        container.appendChild(row);
+      });
+
+      container.classList.remove('hidden');
+    }
+
+    function hideSuggestionList(container) {
+      if (!container) return;
+      container.classList.add('hidden');
+    }
+
+    function cleanCityLabel(text) {
+      return String(text || '').replace(/, USA$/, '');
+    }
+
+    
 
 
     function openPersonalizationModal(){
@@ -1198,5 +1570,59 @@
 
 
 </script>
+  <div id="uiModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:10000; padding:18px; overflow:auto;">
+    <div style="max-width:560px; margin:40px auto; background:white; border-radius:16px; overflow:hidden; box-shadow:0 18px 48px rgba(11,18,32,.22);">
+      <div style="display:flex; justify-content:space-between; align-items:center; padding:14px 16px; border-bottom:1px solid rgba(11,18,32,.12);">
+        <div style="font-weight:900" id="uiModalTitle">Heads up</div>
+        <button type="button" onclick="closeUiModal()" style="border:none; background:transparent; font-size:18px; cursor:pointer;">✕</button>
+      </div>
+      <div style="padding:16px; color:rgba(11,18,32,.78); font-size:14px; line-height:1.45;" id="uiModalBody"></div>
+      <div style="display:flex; justify-content:flex-end; padding:14px 16px; border-top:1px solid rgba(11,18,32,.12);">
+        <button type="button" onclick="closeUiModal()" class="btn btn-primary">OK</button>
+      </div>
+    </div>
+  </div>
+
+</body>
+</html>
+ '&quot;')
+        .replaceAll("'", '&#039;');
+    }
+
+    function renderSuggestionList(container, items, onPick) {
+      if (!container) return;
+      container.innerHTML = '';
+
+      if (!items.length) {
+        container.classList.add('hidden');
+        return;
+      }
+
+      items.forEach((item) => {
+        const row = document.createElement('div');
+        row.className = 'suggestItem';
+        row.innerHTML = `
+          <div class="suggestMain">${escapeHtml(item.main_text || item.description || '')}</div>
+          <div class="suggestSub">${escapeHtml(item.secondary_text || '')}</div>
+        `;
+        row.addEventListener('click', () => onPick(item));
+        container.appendChild(row);
+      });
+
+      container.classList.remove('hidden');
+    }
+
+    function hideSuggestionList(container) {
+      if (!container) return;
+      container.classList.add('hidden');
+    }
+
+    function cleanCityLabel(text) {
+      return String(text || '').replace(/, USA$/, '');
+    }
+
+    
+  </script>
+
 </body>
 </html>

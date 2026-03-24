@@ -7,7 +7,8 @@ trAgent is a web app that helps people discover new local spots (food, coffee, p
 ### 1) Environment variables
 
 - Copy `.env.example` to `.env` and fill in `GOOGLE_MAPS_API_KEY`.
-- If you want the live map on the landing page, also set `GOOGLE_MAPS_JS_API_KEY`.
+- If you want the live map UI, also set `GOOGLE_MAPS_JS_API_KEY` (falls back to `GOOGLE_MAPS_API_KEY`).
+- If you want the AI endpoints, also set `OPENAI_API_KEY`.
 
 ### 2) Install deps
 
@@ -27,6 +28,36 @@ uvicorn main:app --reload
 - Landing page: `http://127.0.0.1:8000/`
 - Itinerary page: `http://127.0.0.1:8000/itinerary`
 - API docs: `http://127.0.0.1:8000/docs`
+
+## API Overview
+
+Auth (bearer token)
+- `POST /auth/register` → `{ "token": "..." }`
+- `POST /auth/login` → `{ "token": "..." }`
+- `POST /auth/logout`
+- `GET /me`
+
+Trips
+- `POST /trips`
+- `GET /trips`
+- `GET /trips/{trip_id}`
+- `DELETE /trips/{trip_id}`
+- `POST /trips/{trip_id}/items`
+- `PATCH /trips/{trip_id}/items/{item_id}`
+- `DELETE /trips/{trip_id}/items/{item_id}`
+- `PUT /trips/{trip_id}/days/{day}/reorder`
+
+Google Places
+- `GET /places/search`
+- `GET /places/autocomplete`
+- `GET /places/details/{place_id}`
+- `GET /places/nearby`
+- `GET /geo/reverse`
+
+AI
+- `GET /ai/test`
+- `POST /ai/outline-test`
+- `POST /ai/itinerary`
 
 ## Project Stages (Detailed Pace Plan)
 

@@ -135,6 +135,11 @@
     .meta{flex:1;min-width:0}
     .name{font-weight:800;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .addr{color:var(--muted);font-size:12px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .detailsLink{
+      color:var(--orange);font-size:12px;font-weight:700;
+      cursor:pointer;margin-top:4px;display:inline-block;
+    }
+    .detailsLink:hover{text-decoration:underline}
     .itemActions{display:flex;gap:6px}
     .iconBtn{
       border:none;background:transparent;cursor:pointer;
@@ -193,28 +198,95 @@
       color:white;
     }
     .hint{color:var(--muted);font-size:12px;margin-top:8px}
-    .results{display:flex;flex-direction:column;gap:12px}
+    .results{display:flex;flex-direction:column;gap:14px}
+
+    .pagination{
+      display:flex;
+      justify-content:center;
+      align-items:center;
+      gap:6px;
+      margin-top:10px;
+      flex-wrap:wrap;
+    }
+    .pageBtn{
+      border:1px solid var(--border);
+      background:white;
+      color:var(--ink);
+      padding:8px 10px;
+      border-radius:12px;
+      font-weight:900;
+      font-size:12px;
+      cursor:pointer;
+      line-height:1;
+    }
+    .pageBtn[disabled]{
+      opacity:.45;
+      cursor:not-allowed;
+    }
+    .pageBtn.active{
+      background:rgba(11,18,32,.06);
+    }
+
+    /* result cards */
     .card{
       background:var(--card);
       border:1px solid var(--border);
       border-radius:18px;
       box-shadow:0 10px 26px rgba(11,18,32,.08);
-      padding:14px;
+      padding:16px;
       display:flex;
-      gap:12px;
+      gap:14px;
       align-items:flex-start;
     }
-    .thumb{
-      width:92px;height:92px;border-radius:14px;
+
+    /* carousel thumbnail */
+    .carousel{
+      width:200px;height:200px;border-radius:14px;
       background:rgba(11,18,32,.06);
       flex:0 0 auto;
+      position:relative;
+      overflow:hidden;
       display:flex;align-items:center;justify-content:center;
       color:var(--muted);font-weight:800;font-size:12px;
     }
+    .carousel img{
+      width:100%;height:100%;object-fit:cover;
+      position:absolute;inset:0;
+      opacity:0;
+      transition:opacity .3s ease;
+    }
+    .carousel img.active{opacity:1}
+    .carouselBtn{
+      position:absolute;top:50%;transform:translateY(-50%);
+      background:rgba(255,255,255,.85);
+      border:none;border-radius:50%;
+      width:26px;height:26px;
+      font-size:13px;font-weight:900;
+      cursor:pointer;z-index:2;
+      display:flex;align-items:center;justify-content:center;
+      color:var(--ink);
+      box-shadow:0 2px 8px rgba(0,0,0,.15);
+      opacity:0;
+      transition:opacity .2s;
+    }
+    .carousel:hover .carouselBtn{opacity:1}
+    .carouselBtn.left{left:4px}
+    .carouselBtn.right{right:4px}
+    .carouselBtn:hover{background:white}
+    .carouselDots{
+      position:absolute;bottom:5px;left:50%;transform:translateX(-50%);
+      display:flex;gap:4px;z-index:2;
+    }
+    .carouselDot{
+      width:6px;height:6px;border-radius:50%;
+      background:rgba(255,255,255,.5);
+    }
+    .carouselDot.active{background:white;box-shadow:0 0 4px rgba(0,0,0,.3)}
+
     .cardBody{flex:1;min-width:0}
-    .cardTitle{font-weight:900}
+    .cardTitle{font-weight:900;font-size:15px}
     .cardAddr{color:var(--muted);font-size:13px;margin-top:4px}
-    .cardRow{display:flex;gap:10px;align-items:center;margin-top:8px;flex-wrap:wrap}
+    .cardRow{display:flex;gap:10px;align-items:center;margin-top:10px;flex-wrap:wrap}
     .pill{
       font-size:12px;font-weight:800;
       padding:6px 10px;border-radius:999px;
@@ -223,14 +295,135 @@
     .addBtn{
       margin-left:auto;
       border:none;
-      padding:10px 12px;
+      padding:10px 14px;
       border-radius:14px;
       font-weight:900;
       cursor:pointer;
       background:linear-gradient(135deg,var(--orange),var(--orange2));
       color:white;
     }
-    .addBtn[disabled]{opacity:.55;cursor:not-allowed}
+    .addBtn[disabled]{
+      background:rgba(11,18,32,.06);
+      color:var(--muted);
+      cursor:not-allowed;
+      box-shadow:none;
+    }
+    .addBtn[disabled] .checkIcon{
+      display:inline-block;width:14px;height:14px;
+      border:2px solid var(--muted);border-radius:50%;
+      position:relative;margin-right:4px;vertical-align:middle;
+    }
+    .addBtn[disabled] .checkIcon::after{
+      content:'';position:absolute;
+      left:3px;top:0px;
+      width:4px;height:8px;
+      border:solid var(--muted);border-width:0 2px 2px 0;
+      transform:rotate(45deg);
+    }
+    .starIcon{
+      display:inline-block;width:12px;height:12px;
+      background:var(--orange);
+      clip-path:polygon(50% 0%,61% 35%,98% 35%,68% 57%,79% 91%,50% 70%,21% 91%,32% 57%,2% 35%,39% 35%);
+      vertical-align:middle;margin-right:3px;
+    }
+    .iconBtn svg{
+      width:16px;height:16px;
+      stroke:currentColor;stroke-width:2;
+      fill:none;stroke-linecap:round;stroke-linejoin:round;
+    }
+
+    /* spinner overlay for carousel lazy load */
+    .carouselSpinner{
+      position:absolute;inset:0;z-index:3;
+      display:flex;align-items:center;justify-content:center;
+      background:rgba(255,255,255,.5);
+    }
+    .carouselSpinner::after{
+      content:'';width:22px;height:22px;
+      border:3px solid var(--border);
+      border-top-color:var(--orange);
+      border-radius:50%;
+      animation:spin .6s linear infinite;
+    }
+    @keyframes spin{to{transform:rotate(360deg)}}
+
+    /* modal carousel */
+    .modalCarousel{
+      position:relative;
+      width:100%;
+      border-radius:14px;
+      overflow:hidden;
+      margin-top:10px;
+      background:rgba(11,18,32,.04);
+    }
+    .modalCarousel img{
+      width:100%;height:260px;object-fit:cover;
+      display:none;
+    }
+    .modalCarousel img.active{display:block}
+    .modalCarouselBtn{
+      position:absolute;top:50%;transform:translateY(-50%);
+      background:rgba(255,255,255,.9);
+      border:none;border-radius:50%;
+      width:34px;height:34px;
+      font-size:16px;font-weight:900;
+      cursor:pointer;z-index:2;
+      display:flex;align-items:center;justify-content:center;
+      color:var(--ink);
+      box-shadow:0 2px 10px rgba(0,0,0,.18);
+    }
+    .modalCarouselBtn.left{left:8px}
+    .modalCarouselBtn.right{right:8px}
+    .modalCarouselBtn:hover{background:white}
+    .modalCarouselDots{
+      display:flex;gap:6px;justify-content:center;
+      padding:10px 0 4px;
+    }
+    .modalCarouselDot{
+      width:8px;height:8px;border-radius:50%;
+      background:rgba(11,18,32,.18);cursor:pointer;
+    }
+    .modalCarouselDot.active{background:var(--orange)}
+
+    .suggestWrap{
+      position:relative;
+      flex:1;
+      min-width:220px;
+    }
+    .suggestList{
+      position:absolute;
+      top:calc(100% + 6px);
+      left:0;
+      right:0;
+      background:white;
+      border:1px solid var(--border);
+      border-radius:14px;
+      box-shadow:0 16px 40px rgba(11,18,32,.12);
+      z-index:50;
+      max-height:260px;
+      overflow:auto;
+    }
+    .suggestItem{
+      padding:10px 12px;
+      cursor:pointer;
+      border-bottom:1px solid rgba(11,18,32,.06);
+    }
+    .suggestItem:last-child{border-bottom:none}
+    .suggestItem:hover{
+      background:rgba(11,18,32,.04);
+    }
+    .suggestMain{
+      font-weight:800;
+      font-size:14px;
+    }
+    .suggestSub{
+      color:var(--muted);
+      font-size:12px;
+      margin-top:2px;
+    }
+    .hidden{
+      display:none;
+    }
   </style>
 </head>
 
@@ -258,6 +451,11 @@
             Select a day, then add places from the results.
           </div>
 
+          <div style="margin-top:10px; display:flex; gap:10px; align-items:center;">
+            <div id="tripTitleDisplay" style="flex:1; font-weight:900; font-size:14px; color:rgba(11,18,32,.85);"></div>
+            <button type="button" onclick="renameCurrentTrip()" style="border:none; padding:10px 12px; border-radius:14px; background:rgba(11,18,32,.08); font-weight:900; cursor:pointer;">Rename</button>
+          </div>
+
           <div class="dayRow" id="dayRow"></div>
         </div>
 
@@ -266,7 +464,10 @@
         </div>
 
         <div class="panelFoot">
-          <button class="primary" id="saveBtn" onclick="saveTrip()" disabled>Save Trip</button>
+          <div style="display:flex; gap:10px;">
+            <button type="button" onclick="clearCurrentDay()" style="flex:1; border:none; padding:12px 14px; border-radius:14px; background:rgba(11,18,32,.08); font-weight:900; cursor:pointer;">Clear Day</button>
+            <button class="primary" id="saveBtn" onclick="saveTrip()" disabled style="flex:1">Save Trip</button>
+          </div>
         </div>
       </div>
 
@@ -276,47 +477,432 @@
           <div class="savedTitle">My Saved Trips</div>
           <div class="savedList" id="savedTripsList"></div>
         </div>
-<!--
+        
+
+<div class="searchCard">
+  <div style="font-weight:900; font-size:15px;">Current Destination</div>
+  <div class="hint" style="margin-top:4px;">Edit your destination here. Searches will use this location.</div>
+
+  <div class="searchRow" style="margin-top:10px;">
+    <div class="suggestWrap">
+      <input
+        id="destinationInput"
+        type="text"
+        placeholder="Enter city, state"
+        maxlength="120"
+        autocomplete="off"
+      />
+      <div id="destinationSuggestions" class="suggestList hidden"></div>
+    </div>
+    <button type="button" onclick="applyDestinationChange()">Update</button>
+  </div>
+
+  <div
+    id="destinationCounter"
+    style="margin-top:0;font-size:10px;line-height:1.1;color:rgba(11,18,32,.55);"
+    aria-live="polite"
+  ></div>
+</div>
+
+
+        <!--Fixed destination card 
         <div class="searchCard">
+  <div style="font-weight:900; font-size:15px;">Current Destination</div>
+  <div class="hint" style="margin-top:4px;">Edit your destination here. Searches will use this location.</div>
+
+  <div class="searchRow" style="margin-top:10px;">
+    <input
+      id="destinationInput"
+      type="text"
+      placeholder="Enter city, state"
+      maxlength="120"
+    />
+    <button type="button" onclick="applyDestinationChange()">Update</button>
+  </div>
+
+  <div
+    id="destinationCounter"
+    style="margin-top:0;font-size:10px;line-height:1.1;color:rgba(11,18,32,.55);"
+    aria-live="polite"
+  ></div>
+</div>
+
+        <div class="searchCard">
+
+          - Updating autogenerate button
           <div class="searchRow">
             <input id="q" placeholder="Search places (e.g., 'parks in San Antonio' or 'museums Brownsville')" />
             <button onclick="runSearch()">Search</button>
           </div>
-          <div class="hint">Powered by your backend <code>/places/search</code>. Add results to the notepad on the left.</div> 
         -->
         <div class="searchCard">
           <div class="searchRow">
-            <input id="q" placeholder="Search places (e.g., 'parks in San Antonio' or 'museums Brownsville')" />
-            <button onclick="runSearch()">Search</button>
-            <button type="button" onclick="runAiGenerate()" style="background:linear-gradient(135deg,var(--orange),var(--orange2));color:white;">
-              Auto-Generate
+            <input id ="q" placeholder="Search Places (e.g. coffee, parks, museums)" maxlength="120" />
+            <button onclick = "runSearch()">Search</button>
+            <button type="button" id="aiGenerateBTN" onclick="runAiGenerate()" style="background:linear-gradient(135deg,var(--orange),var(--orange2)); color:white;">
+            Auto-Generate
             </button>
           </div>
-        
+
+          <div id="qCounter" style="margin-top:0;font-size:10px;line-height:1.1;color:rgba(11,18,32,.55);" aria-live="polite"></div>
 
         </div>
-        <div id="plannerProfileSummary" style="
-      margin-top:12px;
-      padding:12px 14px;
-      border:1px solid rgba(11,18,32,.10);
-      border-radius:14px;
-      background:rgba(11,18,32,.03);
-      color:var(--muted);
-      font-size:13px;
-      line-height:1.5;
-    ">
-      No personalization loaded yet.
-    </div>
 
         <div class="results" id="results"></div>
       </div>
     </div>
   </div>
 
+  <!-- details modal -->
+  <div id="detailsModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:9999; padding:18px; overflow:auto;">
+    <div style="max-width:720px; margin:40px auto; background:white; border-radius:16px; overflow:hidden;">
+      <div style="display:flex; justify-content:space-between; align-items:center; padding:14px 16px; border-bottom:1px solid rgba(11,18,32,.12);">
+        <div style="font-weight:900" id="detailsTitle">Place details</div>
+        <button onclick="closeDetails()" style="border:none; background:transparent; font-size:18px; cursor:pointer;">✕</button>
+      </div>
+
+      <div style="padding:16px;" id="detailsBody">
+        Loading…
+      </div>
+    </div>
+  </div>
+
+  <div id="uiModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:10000; padding:18px; overflow:auto;">
+    <div style="max-width:560px; margin:40px auto; background:white; border-radius:16px; overflow:hidden; box-shadow:0 18px 48px rgba(11,18,32,.22);">
+      <div style="display:flex; justify-content:space-between; align-items:center; padding:14px 16px; border-bottom:1px solid rgba(11,18,32,.12);">
+        <div style="font-weight:900" id="uiModalTitle">Heads up</div>
+        <button type="button" onclick="closeUiModal()" style="border:none; background:transparent; font-size:18px; cursor:pointer;">✕</button>
+      </div>
+      <div style="padding:16px; color:rgba(11,18,32,.78); font-size:14px; line-height:1.45;" id="uiModalBody"></div>
+      <div style="display:flex; gap:10px; justify-content:flex-end; padding:14px 16px; border-top:1px solid rgba(11,18,32,.12);" id="uiModalActions"></div>
+    </div>
+  </div>
+
   <script>
-    // Use same-origin since this page is served by FastAPI
     const API_BASE = '';
 
+    function openUiModal({ title, message, actions }) {
+      const modal = document.getElementById('uiModal');
+      const titleEl = document.getElementById('uiModalTitle');
+      const bodyEl = document.getElementById('uiModalBody');
+      const actionsEl = document.getElementById('uiModalActions');
+      if (!modal || !titleEl || !bodyEl || !actionsEl) return;
+
+      titleEl.textContent = title || 'Heads up';
+      if (typeof message === 'string' && message.trim().startsWith('<')) {
+        bodyEl.innerHTML = message;
+      } else {
+        bodyEl.textContent = message || '';
+      }
+      actionsEl.innerHTML = '';
+
+      (actions || []).forEach((a) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.textContent = a.label;
+        btn.style.border = 'none';
+        btn.style.padding = '10px 12px';
+        btn.style.borderRadius = '12px';
+        btn.style.cursor = 'pointer';
+        btn.style.fontWeight = '900';
+        btn.style.background = a.variant === 'primary' ? 'linear-gradient(135deg,var(--orange),var(--orange2))' : 'rgba(11,18,32,.08)';
+        btn.style.color = a.variant === 'primary' ? 'white' : 'var(--ink)';
+        btn.addEventListener('click', () => a.onClick && a.onClick());
+        actionsEl.appendChild(btn);
+      });
+
+      modal.style.display = 'block';
+    }
+
+    function closeUiModal() {
+      const modal = document.getElementById('uiModal');
+      if (modal) modal.style.display = 'none';
+    }
+
+    function uiNotify(title, message) {
+      openUiModal({
+        title: title || 'Heads up',
+        message: message || '',
+        actions: [{ label: 'OK', variant: 'primary', onClick: () => closeUiModal() }],
+      });
+    }
+
+    document.addEventListener('click', (e) => {
+      const modal = document.getElementById('uiModal');
+      if (modal && modal.style.display === 'block' && e.target === modal) closeUiModal();
+    });
+
+    window.addEventListener('keydown', (e) => {
+      if (e.key !== 'Escape') return;
+      const modal = document.getElementById('uiModal');
+      if (modal && modal.style.display === 'block') closeUiModal();
+    });
+
+    function haversineMiles(a, b) {
+      const lat1 = Number(a?.lat);
+      const lon1 = Number(a?.lng);
+      const lat2 = Number(b?.lat);
+      const lon2 = Number(b?.lng);
+      if (![lat1, lon1, lat2, lon2].every(Number.isFinite)) return null;
+      const R = 3958.8;
+      const toRad = (d) => (d * Math.PI) / 180;
+      const dLat = toRad(lat2 - lat1);
+      const dLon = toRad(lon2 - lon1);
+      const sLat1 = toRad(lat1);
+      const sLat2 = toRad(lat2);
+      const h = Math.sin(dLat / 2) ** 2 + Math.cos(sLat1) * Math.cos(sLat2) * Math.sin(dLon / 2) ** 2;
+      const c = 2 * Math.asin(Math.sqrt(h));
+      return R * c;
+    }
+
+    function estimateTravelMin(a, b) {
+      const miles = haversineMiles(a, b);
+      if (miles === null) return null;
+      const mph = 45;
+      return Math.round((miles / mph) * 60);
+    }
+
+    function findPlaceInOtherDay(placeId) {
+      for (const [dayStr, items] of Object.entries(tripState.itemsByDay)) {
+        const day = Number(dayStr);
+        const found = (items || []).find((x) => x.place_id === placeId);
+        if (found) return { day, item: found };
+      }
+      return null;
+    }
+
+    function getTripTitle() {
+      return (tripState.title || '').trim().slice(0, 200);
+    }
+
+    function setTripTitle(title) {
+      tripState.title = (title || '').slice(0, 200);
+      const el = document.getElementById('tripTitleDisplay');
+      if (el) el.textContent = tripState.title || '';
+    }
+
+    async function renameCurrentTrip() {
+      const current = getTripTitle();
+      openUiModal({
+        title: 'Rename trip',
+        message: `<div style="font-weight:900;margin-bottom:8px;">Trip name</div><input id="renameTripInput" value="${escapeHtml(current)}" maxlength="200" style="width:100%; padding:10px 12px; border-radius:14px; border:1px solid var(--border); font-weight:900;" />`,
+        actions: [
+          { label: 'Cancel', onClick: () => closeUiModal() },
+          { label: 'Save', variant: 'primary', onClick: async () => {
+              const el = document.getElementById('renameTripInput');
+              const next = (el?.value || '').trim().slice(0, 200);
+              if (!next) return;
+              setTripTitle(next);
+              closeUiModal();
+              if (persistEnabled()) {
+                await authFetch(`/trips/${tripState.currentTripId}`, {
+                  method: 'PATCH',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ title: next }),
+                }).catch(() => {});
+                await loadSavedTrips().catch(() => {});
+              }
+            }
+          },
+        ],
+      });
+      setTimeout(() => {
+        const el = document.getElementById('renameTripInput');
+        if (el) el.focus();
+      }, 0);
+    }
+
+    // cache for fetched detail photos so we don't re-fetch
+    const photoCache = {};
+
+    // fetch full photo list from details endpoint
+    async function fetchPlacePhotos(placeId) {
+      if (photoCache[placeId]) return photoCache[placeId];
+      try {
+        const res = await fetch(`/places/details/${encodeURIComponent(placeId)}`);
+        if (!res.ok) return null;
+        const data = await res.json();
+        // details returns up to 8 photos at 1200px, resize to 400 for card thumbnails
+        const photos = (data.photos || []).map(url => url.replace('maxwidth=1200', 'maxwidth=400'));
+        photoCache[placeId] = photos;
+        return photos;
+      } catch {
+        return null;
+      }
+    }
+
+    // rebuild a carousel's images + dots with a new photo list
+    function rebuildCarousel(container, photos) {
+      // remove old images, dots, spinner
+      container.querySelectorAll('img, .carouselDots, .carouselSpinner').forEach(el => el.remove());
+
+      photos.forEach((url, i) => {
+        const img = document.createElement('img');
+        img.src = url;
+        img.alt = '';
+        if (i === 0) img.classList.add('active');
+        // insert before the nav buttons
+        const firstBtn = container.querySelector('.carouselBtn');
+        if (firstBtn) container.insertBefore(img, firstBtn);
+        else container.appendChild(img);
+      });
+
+      if (photos.length > 1) {
+        const dotsWrap = document.createElement('div');
+        dotsWrap.className = 'carouselDots';
+        photos.forEach((_, i) => {
+          const dot = document.createElement('div');
+          dot.className = 'carouselDot' + (i === 0 ? ' active' : '');
+          dotsWrap.appendChild(dot);
+        });
+        container.appendChild(dotsWrap);
+
+        // make sure nav buttons exist
+        if (!container.querySelector('.carouselBtn.left')) {
+          container.insertAdjacentHTML('beforeend',
+            '<button class="carouselBtn left">‹</button><button class="carouselBtn right">›</button>');
+        }
+      }
+    }
+
+    // init card carousel with lazy-load on first arrow click
+    function initCardCarousel(container) {
+      const placeId = container.dataset.placeId;
+      let current = 0;
+      let loaded = false;   // true after we fetch full photos
+      let loading = false;
+
+      function getImgs() { return container.querySelectorAll('img'); }
+      function getDots() { return container.querySelectorAll('.carouselDot'); }
+
+      function show(idx) {
+        const imgs = getImgs();
+        const dots = getDots();
+        imgs.forEach((img, i) => img.classList.toggle('active', i === idx));
+        dots.forEach((dot, i) => dot.classList.toggle('active', i === idx));
+        current = idx;
+      }
+
+      async function ensureLoaded() {
+        if (loaded || loading) return;
+        loading = true;
+
+        // show spinner
+        const spinner = document.createElement('div');
+        spinner.className = 'carouselSpinner';
+        container.appendChild(spinner);
+
+        const photos = await fetchPlacePhotos(placeId);
+        spinner.remove();
+        loading = false;
+
+        if (photos && photos.length > 1) {
+          rebuildCarousel(container, photos);
+          show(0);
+          loaded = true;
+          // re-bind nav buttons after rebuild
+          bindNav();
+        } else {
+          // nothing extra to show
+          loaded = true;
+        }
+      }
+
+      function bindNav() {
+        const leftBtn = container.querySelector('.carouselBtn.left');
+        const rightBtn = container.querySelector('.carouselBtn.right');
+        if (!leftBtn || !rightBtn) return;
+
+        // clone+replace to remove old listeners
+        const newLeft = leftBtn.cloneNode(true);
+        const newRight = rightBtn.cloneNode(true);
+        leftBtn.replaceWith(newLeft);
+        rightBtn.replaceWith(newRight);
+
+        newLeft.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          await ensureLoaded();
+          const imgs = getImgs();
+          if (imgs.length <= 1) return;
+          show((current - 1 + imgs.length) % imgs.length);
+        });
+        newRight.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          await ensureLoaded();
+          const imgs = getImgs();
+          if (imgs.length <= 1) return;
+          show((current + 1) % imgs.length);
+        });
+      }
+
+      bindNav();
+
+      // also lazy-load on hover so photos are ready when user clicks
+      let hoverTriggered = false;
+      container.addEventListener('mouseenter', () => {
+        if (!hoverTriggered) {
+          hoverTriggered = true;
+          ensureLoaded();
+        }
+      });
+    }
+
+
+    //  carousel helper for details modal
+    function buildModalCarousel(photos) {
+      if (!photos || !photos.length) return '';
+
+      const imgsHtml = photos.map((url, i) =>
+        `<img src="${url}" alt="" class="${i === 0 ? 'active' : ''}" />`
+      ).join('');
+
+      const dotsHtml = photos.map((_, i) =>
+        `<div class="modalCarouselDot ${i === 0 ? 'active' : ''}" data-idx="${i}"></div>`
+      ).join('');
+
+      const navHtml = photos.length > 1
+        ? `<button class="modalCarouselBtn left" data-dir="-1">‹</button>
+           <button class="modalCarouselBtn right" data-dir="1">›</button>`
+        : '';
+
+      return `
+        <div class="modalCarousel" id="modalCarouselWrap">
+          ${imgsHtml}
+          ${navHtml}
+        </div>
+        ${photos.length > 1 ? `<div class="modalCarouselDots" id="modalCarouselDots">${dotsHtml}</div>` : ''}
+      `;
+    }
+
+    function initModalCarousel() {
+      const wrap = document.getElementById('modalCarouselWrap');
+      if (!wrap) return;
+      const imgs = wrap.querySelectorAll('img');
+      if (imgs.length <= 1) return;
+
+      const dotsWrap = document.getElementById('modalCarouselDots');
+      const dots = dotsWrap ? dotsWrap.querySelectorAll('.modalCarouselDot') : [];
+      let current = 0;
+
+      function show(idx) {
+        imgs.forEach((img, i) => img.classList.toggle('active', i === idx));
+        dots.forEach((dot, i) => dot.classList.toggle('active', i === idx));
+        current = idx;
+      }
+
+      wrap.querySelectorAll('.modalCarouselBtn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const dir = parseInt(btn.dataset.dir);
+          show((current + dir + imgs.length) % imgs.length);
+        });
+      });
+
+      dots.forEach(dot => {
+        dot.addEventListener('click', () => show(parseInt(dot.dataset.idx)));
+      });
+    }
+
+    // details modal
     async function openDetails(placeId) {
       const modal = document.getElementById("detailsModal");
       const title = document.getElementById("detailsTitle");
@@ -325,64 +911,130 @@
       title.textContent = "Loading…";
       body.textContent = "Loading…";
 
-        try {
-          const res = await fetch(`/places/details/${encodeURIComponent(placeId)}`);
-          const data = await res.json();
-          if (!res.ok) throw new Error(data.detail || "Failed to load details");
+      try {
+        const res = await fetch(`/places/details/${encodeURIComponent(placeId)}`);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || "Failed to load details");
 
-          title.textContent = data.name || "Place details";
-
-          const hoursHtml = (data.hours && data.hours.length)
-            ? `<div style="margin-top:10px;"><div style="font-weight:900;margin-bottom:6px;">Hours</div>
-                <div style="color:rgba(11,18,32,.75); font-size:14px; line-height:1.5;">
-                  ${data.hours.map(h => `<div>${escapeHtml(h)}</div>`).join("")}
-                </div>
-              </div>`
-            : "";
-
-          const photosHtml = (data.photos && data.photos.length)
-            ? `<div style="display:flex; gap:10px; overflow:auto; padding:8px 0 2px; margin-top:10px;">
-                ${data.photos.map(url => `
-                  <img src="${url}" alt="" style="height:140px; border-radius:12px; object-fit:cover;" />
-                `).join("")}
-              </div>`
-            : "";
-
-          body.innerHTML = `
-            <div style="color:rgba(11,18,32,.75); font-size:14px; line-height:1.5;">
-              ${data.address ? `<div><b>Address:</b> ${escapeHtml(data.address)}</div>` : ""}
-              ${data.phone ? `<div><b>Phone:</b> ${escapeHtml(data.phone)}</div>` : ""}
-              ${data.website ? `<div><b>Website:</b> <a href="${data.website}" target="_blank" rel="noreferrer">${escapeHtml(data.website)}</a></div>` : ""}
-              ${typeof data.open_now === "boolean" ? `<div><b>Open now:</b> ${data.open_now ? "Yes" : "No"}</div>` : ""}
-              ${data.rating ? `<div><b>Rating:</b> ${escapeHtml(String(data.rating))}</div>` : ""}
-            </div>
-            ${photosHtml}
-            ${hoursHtml}
-          `;
-        } catch (e) {
-          title.textContent = "Place details";
-          body.textContent = "Could not load details. Check backend logs and API key.";
+        // cache photos for card carousels too
+        if (data.photos && data.photos.length) {
+          photoCache[placeId] = data.photos.map(url => url.replace('maxwidth=1200', 'maxwidth=400'));
         }
+
+        title.textContent = data.name || "Place details";
+
+        const hoursHtml = (data.hours && data.hours.length)
+          ? `<div style="margin-top:10px;"><div style="font-weight:900;margin-bottom:6px;">Hours</div>
+              <div style="color:rgba(11,18,32,.75); font-size:14px; line-height:1.5;">
+                ${data.hours.map(h => `<div>${escapeHtml(h)}</div>`).join("")}
+              </div>
+            </div>`
+          : "";
+
+        const photosHtml = buildModalCarousel(data.photos);
+
+        body.innerHTML = `
+          <div style="color:rgba(11,18,32,.75); font-size:14px; line-height:1.5;">
+            ${data.address ? `<div><b>Address:</b> ${escapeHtml(data.address)}</div>` : ""}
+            ${data.phone ? `<div><b>Phone:</b> ${escapeHtml(data.phone)}</div>` : ""}
+            ${data.website ? `<div><b>Website:</b> <a href="${data.website}" target="_blank" rel="noreferrer">${escapeHtml(data.website)}</a></div>` : ""}
+            ${typeof data.open_now === "boolean" ? `<div><b>Open now:</b> ${data.open_now ? "Yes" : "No"}</div>` : ""}
+            ${data.rating ? `<div><b>Rating:</b> <span class="starIcon"></span>${escapeHtml(String(data.rating))}</div>` : ""}
+          </div>
+          ${photosHtml}
+          ${hoursHtml}
+        `;
+
+        initModalCarousel();
+      } catch (e) {
+        title.textContent = "Place details";
+        body.textContent = "Could not load details. Check backend logs and API key.";
       }
+    }
 
-      function closeDetails() {
-        document.getElementById("detailsModal").style.display = "none";
-      }
+    function closeDetails() {
+      document.getElementById("detailsModal").style.display = "none";
+    }
 
-      // Close modal when clicking backdrop
-      document.addEventListener("click", (e) => {
-        const modal = document.getElementById("detailsModal");
-        if (modal.style.display === "block" && e.target === modal) closeDetails();
-      });
-
+    document.addEventListener("click", (e) => {
+      const modal = document.getElementById("detailsModal");
+      if (modal.style.display === "block" && e.target === modal) closeDetails();
+    });
 
 
+    //update destination 
+    async function applyDestinationChange() {
+    const destinationEl = document.getElementById('destinationInput');
+    const nextDestination = (destinationEl.value || '').trim().slice(0, 120);
+    destinationEl.value = nextDestination;
+
+    if (!nextDestination) {
+      uiNotify('Missing destination', 'Enter a destination first.');
+      return;
+    }
+
+    tripState.destination = nextDestination;
+
+    if (!getTripTitle()) {
+      setTripTitle(`Trip to ${nextDestination}`);
+    }
+
+    const url = new URL(window.location.href);
+    url.searchParams.set('dest', nextDestination);
+    window.history.replaceState({}, '', url.toString());
+
+    const interestsParam = url.searchParams.get('interests') || '';
+    const searchTerm = (document.getElementById('q').value || '').trim().slice(0, 120);
+
+    if (interestsParam) {
+      const merged = await searchByInterests(nextDestination, interestsParam);
+      renderResults(merged);
+      return;
+    }
+
+    if (searchTerm) {
+      await runSearch();
+    }
+  }
+    // auth helpers
     function getToken() {
       return localStorage.getItem('tragent_token');
     }
 
+    function savePendingTripDraft(nextUrl) {
+      const destination = (document.getElementById('destinationInput').value || tripState.destination || '').trim();
+      const draft = {
+        destination,
+        days: tripState.days,
+        itemsByDay: tripState.itemsByDay,
+        nextUrl,
+        createdAt: Date.now(),
+      };
+      localStorage.setItem('tragent_pending_trip', JSON.stringify(draft));
+    }
+
+    function readPendingTripDraft() {
+      const raw = localStorage.getItem('tragent_pending_trip');
+      if (!raw) return null;
+      try {
+        return JSON.parse(raw);
+      } catch {
+        return null;
+      }
+    }
+
+    function clearPendingTripDraft() {
+      localStorage.removeItem('tragent_pending_trip');
+    }
+
     function currentNextUrl() {
       return window.location.pathname + window.location.search;
+    }
+
+    function currentNextUrlWithAutosave() {
+      const url = new URL(window.location.href);
+      url.searchParams.set('autosave', '1');
+      return url.pathname + url.search;
     }
 
     function updateSignInLink() {
@@ -422,13 +1074,22 @@
       food_focus: true,
     };
 
-    // Simple trip builder state (front-end only for now)
+    let personalizationProfile = {
+      group_type: 'solo',
+      pace: 'balanced',
+      budget: 'medium',
+      place_style: 'mix',
+      food_focus: true,
+    };
+
+    // trip state
     const tripState = {
       destination: '',
       days: 3,
       activeDay: 1,
       itemsByDay: { 1: [], 2: [], 3: [] },
       currentTripId: null,
+      title: '',
     };
 
     function resetDays(newDays) {
@@ -439,7 +1100,6 @@
       }
       tripState.itemsByDay = nextItems;
       if (tripState.activeDay > newDays) tripState.activeDay = 1;
-
 
       initDays();
       renderDays();
@@ -481,6 +1141,9 @@
           const trip = await authFetch(`/trips/${t.id}`);
           const maxDay = Math.max(1, ...(trip.items || []).map((i) => i.day || 1));
           tripState.destination = trip.destination || '';
+          setTripTitle(trip.title || (tripState.destination ? `Trip to ${tripState.destination}` : 'Trip'));
+          document.getElementById('destinationInput').value = tripState.destination;
+          setupCharLeftCounters();
           tripState.activeDay = 1;
           tripState.currentTripId = trip.id;
           tripState.itemsByDay = {};
@@ -504,15 +1167,26 @@
         });
 
         deleteBtn.addEventListener('click', async () => {
-          await authFetch(`/trips/${t.id}`, { method: 'DELETE' });
-          await loadSavedTrips();
+          openUiModal({
+            title: 'Delete saved trip?',
+            message: `Delete “${escapeHtml(t.title || 'Trip')}”? This cannot be undone.`,
+            actions: [
+              { label: 'Cancel', onClick: () => closeUiModal() },
+              { label: 'Delete', variant: 'primary', onClick: async () => {
+                  closeUiModal();
+                  await authFetch(`/trips/${t.id}`, { method: 'DELETE' }).catch(() => {});
+                  await loadSavedTrips().catch(() => {});
+                }
+              },
+            ],
+          });
         });
 
         list.appendChild(row);
       });
     }
 
-    // Build day buttons
+
     function initDays() {
       const row = document.getElementById('dayRow');
       row.innerHTML = '';
@@ -520,7 +1194,7 @@
         const btn = document.createElement('button');
         btn.className = 'dayBtn' + (d === tripState.activeDay ? ' active' : '');
         btn.textContent = 'Day ' + d;
-        btn.onclick = () => { tripState.activeDay = d; renderDays(); renderItinerary(); };
+        btn.onclick = () => { tripState.activeDay = d; renderDays(); renderItinerary(); renderResultsPage(); };
         row.appendChild(btn);
       }
     }
@@ -555,7 +1229,7 @@
       }).catch(() => {});
     }
 
-    // LEFT panel render
+    // left panel render 
     function renderItinerary() {
       const list = document.getElementById('itinList');
       sortDayItems(tripState.activeDay);
@@ -574,25 +1248,70 @@
       items.forEach((p, idx) => {
         const div = document.createElement('div');
         div.className = 'item';
-        div.innerHTML = `
-          <div class="num">${idx + 1}</div>
-          <div class="meta">
-            <div class="name" title="${escapeHtml(p.name)}">${escapeHtml(p.name)}</div>
-            <div class="addr" title="${escapeHtml(p.address || '')}">${escapeHtml(p.address || '')}</div>
-            <div style="margin-top:8px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      div.innerHTML = `
+        <div class="num">${idx + 1}</div>
+        <div class="meta">
+          <div class="name" title="${escapeHtml(p.name)}">${escapeHtml(p.name)}</div>
+          <div class="addr" title="${escapeHtml(p.address || '')}">${escapeHtml(p.address || '')}</div>
+          <span class="detailsLink" data-pid="${escapeHtml(p.place_id)}">View details</span>
+          <div style="margin-top:8px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+            <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;width:100%">
               <label style="display:flex;gap:6px;align-items:center;font-size:12px;color:var(--muted);font-weight:800">
-                <input type="checkbox" ${p.completed ? 'checked' : ''} data-action="complete" data-id="${p.id || ''}" />
-                Completed
+                Arrive
+                <input type="time" data-action="arrival" value="${escapeHtml(p.arrival_time || '')}" style="padding:8px 10px;border-radius:12px;border:1px solid var(--border);font-size:13px;" />
               </label>
-              <textarea data-action="notes" data-id="${p.id || ''}" placeholder="Notes" style="width:100%;margin-top:6px;padding:8px 10px;border-radius:12px;border:1px solid var(--border);font-size:13px;" rows="1">${escapeHtml(p.notes || '')}</textarea>
+              <label style="display:flex;gap:6px;align-items:center;font-size:12px;color:var(--muted);font-weight:800">
+                Depart
+                <input type="time" data-action="depart" value="${escapeHtml(p.departure_time || '')}" style="padding:8px 10px;border-radius:12px;border:1px solid var(--border);font-size:13px;" />
+              </label>
             </div>
+            <label style="display:flex;gap:6px;align-items:center;font-size:12px;color:var(--muted);font-weight:800">
+              <input type="checkbox" ${p.completed ? 'checked' : ''} data-action="complete" data-id="${p.id || ''}" />
+              Completed
+            </label>
+            <textarea data-action="notes" data-id="${p.id || ''}" placeholder="Notes" style="width:100%;margin-top:6px;padding:8px 10px;border-radius:12px;border:1px solid var(--border);font-size:13px;" rows="1" maxlength="1000">${escapeHtml(p.notes || '')}</textarea>
+            <div data-action="notes-left" style="margin-top:6px;font-size:12px;color:rgba(11,18,32,.55);" aria-live="polite"></div>
           </div>
-          <div class="itemActions">
-            <button class="iconBtn" title="Move up" onclick="moveItem(${tripState.activeDay}, ${idx}, -1)">⬆️</button>
-            <button class="iconBtn" title="Move down" onclick="moveItem(${tripState.activeDay}, ${idx}, 1)">⬇️</button>
-            <button class="iconBtn" title="Remove" onclick="removeFromTrip('${p.place_id}')">🗑️</button>
+        </div>
+        <div class="itemActions">
+            <button class="iconBtn" title="Move up" onclick="moveItem(${tripState.activeDay}, ${idx}, -1)"><svg viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button>
+            <button class="iconBtn" title="Move down" onclick="moveItem(${tripState.activeDay}, ${idx}, 1)"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12l7 7 7-7"/></svg></button>
+            <button class="iconBtn" title="Remove" onclick="removeFromTrip('${p.place_id}')"><svg viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
           </div>
         `;
+
+      const dLink = div.querySelector('.detailsLink');
+      dLink.addEventListener('click', () => openDetails(p.place_id));
+
+      const arrivalEl = div.querySelector('input[data-action="arrival"]');
+      if (arrivalEl) {
+        arrivalEl.addEventListener('change', async (e) => {
+          const value = e.target.value || null;
+          p.arrival_time = value;
+          if (persistEnabled() && p.id) {
+            await fetch(`/trips/${tripState.currentTripId}/items/${p.id}` , {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
+              body: JSON.stringify({ arrival_time: value }),
+            }).catch(() => {});
+          }
+        });
+      }
+
+      const departEl = div.querySelector('input[data-action="depart"]');
+      if (departEl) {
+        departEl.addEventListener('change', async (e) => {
+          const value = e.target.value || null;
+          p.departure_time = value;
+          if (persistEnabled() && p.id) {
+            await fetch(`/trips/${tripState.currentTripId}/items/${p.id}` , {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
+              body: JSON.stringify({ departure_time: value }),
+            }).catch(() => {});
+          }
+        });
+      }
 
         const completeEl = div.querySelector('input[data-action="complete"]');
         if (completeEl) {
@@ -611,8 +1330,10 @@
 
         const notesEl = div.querySelector('textarea[data-action="notes"]');
         if (notesEl) {
+          bindCharLeftCounter(notesEl, div.querySelector('[data-action="notes-left"]'));
           notesEl.addEventListener('blur', async (e) => {
-            const value = e.target.value;
+            const value = (e.target.value || '').slice(0, 1000);
+            e.target.value = value;
             p.notes = value;
             if (persistEnabled() && p.id) {
               await fetch(`/trips/${tripState.currentTripId}/items/${p.id}` , {
@@ -638,14 +1359,100 @@
       items.forEach((it, i) => { it.position = i + 1; });
       renderItinerary();
       await persistReorder(day);
+
+      for (let i = 1; i < items.length; i++) {
+        const prev = items[i - 1];
+        const cur = items[i];
+        const travelMin = estimateTravelMin(prev, cur);
+        if (travelMin !== null && travelMin >= 120) {
+          openUiModal({
+            title: 'Travel warning',
+            message: `${prev.name} → ${cur.name} is about ${travelMin} minutes away. Consider moving it to another day.`,
+            actions: [
+              { label: 'OK', variant: 'primary', onClick: () => closeUiModal() },
+            ],
+          });
+          break;
+        }
+      }
     }
 
     function addToTrip(place) {
       if (isAdded(place.place_id)) return;
-      tripState.itemsByDay[tripState.activeDay].push({ ...place, completed: false, notes: '', position: tripState.itemsByDay[tripState.activeDay].length + 1 });
+
+      const existing = findPlaceInOtherDay(place.place_id);
+      if (existing && existing.day !== tripState.activeDay) {
+        openUiModal({
+          title: 'Already scheduled',
+          message: `${place.name} is already scheduled on Day ${existing.day}.`,
+          actions: [
+            { label: 'Cancel', onClick: () => closeUiModal() },
+            { label: `Go to Day ${existing.day}`, onClick: () => { closeUiModal(); tripState.activeDay = existing.day; renderDays(); renderItinerary(); renderResultsPage(); } },
+            { label: 'Add anyway', variant: 'primary', onClick: () => { closeUiModal(); addToTripConfirmed(place); } },
+          ],
+        });
+        return;
+      }
+
+      addToTripConfirmed(place);
+    }
+
+    function addToTripConfirmed(place) {
+      const dayItems = tripState.itemsByDay[tripState.activeDay];
+      const prev = dayItems[dayItems.length - 1];
+
+      dayItems.push({ ...place, completed: false, notes: '', position: dayItems.length + 1, arrival_time: null, departure_time: null });
       renderItinerary();
-      // Update result buttons (so it shows Added)
       renderResults(lastResults);
+
+      if (prev) {
+        const travelMin = estimateTravelMin(prev, place);
+        if (travelMin !== null && travelMin >= 120) {
+          openUiModal({
+            title: 'Travel warning',
+            message: `${prev.name} → ${place.name} is about ${travelMin} minutes away. Consider putting it on another day.`,
+            actions: [
+              { label: 'OK', variant: 'primary', onClick: () => closeUiModal() },
+            ],
+          });
+        }
+      }
+    }
+
+    async function clearCurrentDay() {
+      const day = tripState.activeDay;
+      const items = tripState.itemsByDay[day] || [];
+      if (!items.length) return;
+
+      openUiModal({
+        title: `Clear Day ${day}?`,
+        message: `This will remove ${items.length} place${items.length === 1 ? '' : 's'} from Day ${day}.`,
+        actions: [
+          { label: 'Cancel', onClick: () => closeUiModal() },
+          {
+            label: 'Clear day',
+            variant: 'primary',
+            onClick: async () => {
+              closeUiModal();
+              const toDelete = [...items];
+              tripState.itemsByDay[day] = [];
+              renderItinerary();
+              renderResultsPage();
+
+              if (persistEnabled()) {
+                await Promise.allSettled(
+                  toDelete
+                    .filter((it) => it?.id)
+                    .map((it) => fetch(`/trips/${tripState.currentTripId}/items/${it.id}`, {
+                      method: 'DELETE',
+                      headers: { Authorization: `Bearer ${getToken()}` },
+                    }))
+                );
+              }
+            },
+          },
+        ],
+      });
     }
 
     async function removeFromTrip(placeId) {
@@ -665,10 +1472,104 @@
       }
     }
 
-    // RIGHT results render
+    // right results render
     let lastResults = [];
+    const RESULTS_PER_PAGE = 10;
+    let resultsPage = 1;
+
+    function getTotalPages() {
+      return Math.max(1, Math.ceil((lastResults?.length || 0) / RESULTS_PER_PAGE));
+    }
+
+    function setResultsPage(nextPage) {
+      const total = getTotalPages();
+      resultsPage = Math.min(total, Math.max(1, nextPage));
+      renderResultsPage();
+      window.scrollTo(0, 0);
+    }
+
     function renderResults(results) {
       lastResults = results || [];
+      resultsPage = 1;
+      renderResultsPage();
+    }
+
+    function renderPagination(root) {
+      const total = getTotalPages();
+      if (total <= 1) return;
+
+      const pager = document.createElement('div');
+      pager.className = 'pagination';
+
+      const prev = document.createElement('button');
+      prev.className = 'pageBtn';
+      prev.type = 'button';
+      prev.textContent = 'Prev';
+      prev.disabled = resultsPage <= 1;
+      prev.addEventListener('click', () => setResultsPage(resultsPage - 1));
+      pager.appendChild(prev);
+
+      const maxButtons = 7;
+      let start = Math.max(1, resultsPage - Math.floor(maxButtons / 2));
+      let end = Math.min(total, start + maxButtons - 1);
+      start = Math.max(1, end - maxButtons + 1);
+
+      if (start > 1) {
+        const first = document.createElement('button');
+        first.className = 'pageBtn';
+        first.type = 'button';
+        first.textContent = '1';
+        first.addEventListener('click', () => setResultsPage(1));
+        pager.appendChild(first);
+
+        if (start > 2) {
+          const dots = document.createElement('span');
+          dots.style.opacity = '0.6';
+          dots.style.fontWeight = '900';
+          dots.textContent = '…';
+          pager.appendChild(dots);
+        }
+      }
+
+      for (let p = start; p <= end; p++) {
+        const btn = document.createElement('button');
+        btn.className = 'pageBtn' + (p === resultsPage ? ' active' : '');
+        btn.type = 'button';
+        btn.textContent = String(p);
+        btn.disabled = p === resultsPage;
+        btn.addEventListener('click', () => setResultsPage(p));
+        pager.appendChild(btn);
+      }
+
+      if (end < total) {
+        if (end < total - 1) {
+          const dots = document.createElement('span');
+          dots.style.opacity = '0.6';
+          dots.style.fontWeight = '900';
+          dots.textContent = '…';
+          pager.appendChild(dots);
+        }
+
+        const last = document.createElement('button');
+        last.className = 'pageBtn';
+        last.type = 'button';
+        last.textContent = String(total);
+        last.addEventListener('click', () => setResultsPage(total));
+        pager.appendChild(last);
+      }
+
+      const next = document.createElement('button');
+      next.className = 'pageBtn';
+      next.type = 'button';
+      next.textContent = 'Next';
+      next.disabled = resultsPage >= total;
+      next.addEventListener('click', () => setResultsPage(resultsPage + 1));
+      pager.appendChild(next);
+
+      root.appendChild(pager);
+    }
+
+    function renderResultsPage() {
       const root = document.getElementById('results');
       root.innerHTML = '';
 
@@ -677,44 +1578,67 @@
         return;
       }
 
-      lastResults.forEach(p => {
+      const total = getTotalPages();
+      if (resultsPage > total) resultsPage = total;
+
+      const startIdx = (resultsPage - 1) * RESULTS_PER_PAGE;
+      const pageItems = lastResults.slice(startIdx, startIdx + RESULTS_PER_PAGE);
+
+      pageItems.forEach(p => {
         const added = isAdded(p.place_id);
         const card = document.createElement('div');
         card.className = 'card';
+
+        const photos = p.photos || (p.photo_url ? [p.photo_url] : []);
+        let carouselHtml;
+        if (photos.length) {
+          const imgsHtml = photos.map((url, i) =>
+            `<img src="${url}" alt="" class="${i === 0 ? 'active' : ''}" />`
+          ).join('');
+          const dotsHtml = photos.length > 1
+            ? `<div class="carouselDots">${photos.map((_, i) => `<div class="carouselDot ${i === 0 ? 'active' : ''}"></div>`).join('')}</div>`
+            : '';
+          const navHtml = `<button class="carouselBtn left">‹</button><button class="carouselBtn right">›</button>`;
+          carouselHtml = `<div class="carousel" data-place-id="${escapeHtml(p.place_id)}">${imgsHtml}${navHtml}${dotsHtml}</div>`;
+        } else {
+          carouselHtml = `<div class="carousel" data-place-id="${escapeHtml(p.place_id)}">Photo</div>`;
+        }
+
         card.innerHTML = `
-          <div class="thumb">
-            ${
-              p.photo_url
-                ? `<img src="${p.photo_url}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:14px;" />`
-                : `Photo`
-            }
-          </div>
+          ${carouselHtml}
           <div class="cardBody">
             <div class="cardTitle">${escapeHtml(p.name || 'Unknown')}</div>
             <div class="cardAddr">${escapeHtml(p.address || '')}</div>
             <div class="cardRow">
-              ${p.rating ? `<span class="pill">⭐ ${escapeHtml(String(p.rating))}</span>` : ``}
+              ${p.rating ? `<span class="pill"><span class="starIcon"></span>${escapeHtml(String(p.rating))}</span>` : ``}
               <span class="pill">Day ${tripState.activeDay}</span>
               <button class="addBtn" ${added ? 'disabled' : ''} data-place-id="${escapeHtml(p.place_id)}">
-                ${added ? 'Added ✅' : 'Add to Trip'}
+                ${added ? '<span class="checkIcon"></span>Added' : 'Add to Trip'}
               </button>
             </div>
           </div>
         `;
         root.appendChild(card);
+
+        const carouselEl = card.querySelector('.carousel');
+        if (carouselEl) initCardCarousel(carouselEl);
+
         card.style.cursor = "pointer";
         card.addEventListener("click", (e) => {
-          // don't trigger if they clicked the Add button
-          if (e.target.closest(".addBtn")) return;
+          if (e.target.closest(".addBtn") || e.target.closest(".carouselBtn")) return;
           openDetails(p.place_id);
-        });  
+        });
+
         const btn = card.querySelector(".addBtn");
         if (btn && !added) {
           btn.addEventListener('click', () => addToTrip(p));
         }
       });
+
+      renderPagination(root);
     }
-    
+
+    // interest queries + shuffle 
     const INTEREST_TO_QUERY = {
       food: "restaurants",
       coffee: "coffee shop",
@@ -726,7 +1650,6 @@
       history: "historical sites",
     };
 
-    // Build queries like: "coffee shop in Brownsville, TX"
     function buildInterestQueries(destination, interestsCsv) {
       if (!interestsCsv) return [];
       const destPart = destination ? ` in ${destination}` : "";
@@ -737,50 +1660,76 @@
         .map(id => (INTEREST_TO_QUERY[id] || id) + destPart);
     }
 
-    // Fetch results for many queries and merge + dedupe
+    function interleaveResults(groupedResults) {
+      const groups = groupedResults.filter(g => g.length > 0);
+      if (!groups.length) return [];
+
+      const result = [];
+      const seen = new Set();
+      let maxLen = Math.max(...groups.map(g => g.length));
+
+      for (let i = 0; i < maxLen; i++) {
+        for (const group of groups) {
+          if (i < group.length) {
+            const p = group[i];
+            if (!p.place_id || seen.has(p.place_id)) continue;
+            seen.add(p.place_id);
+            result.push(p);
+          }
+        }
+      }
+      return result;
+    }
+
     async function searchByInterests(destination, interestsCsv) {
       const queries = buildInterestQueries(destination, interestsCsv);
       if (!queries.length) return [];
 
-      const all = [];
+      const grouped = [];
       for (const q of queries) {
         const res = await fetch(API_BASE + "/places/search?q=" + encodeURIComponent(q));
-        if (!res.ok) continue;
+        if (!res.ok) { grouped.push([]); continue; }
         const data = await res.json();
-        all.push(...(data.results || []));
+        grouped.push(data.results || []);
       }
 
-      // dedupe by place_id
-      const seen = new Set();
-      const deduped = [];
-      for (const p of all) {
-        if (!p.place_id || seen.has(p.place_id)) continue;
-        seen.add(p.place_id);
-        deduped.push(p);
-      }
-      return deduped;
+      return interleaveResults(grouped);
     }
 
 
 
+  async function runSearch() {
+  const searchTerm = document.getElementById('q').value.trim().slice(0, 120);
+  const destination = (document.getElementById('destinationInput').value || '').trim().slice(0, 120);
 
+  document.getElementById('q').value = searchTerm;
+  document.getElementById('destinationInput').value = destination;
 
+  if (!destination) {
+    uiNotify('Missing destination', 'Enter a destination first.');
+    return;
+  }
 
+  if (!searchTerm) {
+    uiNotify('Missing search', 'Enter something to search for.');
+    return;
+  }
 
-    async function runSearch() {
-      const q = document.getElementById('q').value.trim();
-      if (!q) return;
+  tripState.destination = destination;
 
-      const res = await fetch(API_BASE + '/places/search?q=' + encodeURIComponent(q));
-      if (!res.ok) {
-        renderResults([]);
-        alert('Search failed. Check GOOGLE_MAPS_API_KEY and backend logs.');
-        return;
-      }
-      const data = await res.json();
-      renderResults(data.results || []);
-    }
+  const fullQuery = `${searchTerm} in ${destination}`;
 
+  const res = await fetch(API_BASE + '/places/search?q=' + encodeURIComponent(fullQuery));
+  if (!res.ok) {
+    renderResults([]);
+    uiNotify('Search failed', 'Check GOOGLE_MAPS_API_KEY and backend logs.');
+    return;
+  }
+
+  const data = await res.json();
+  renderResults(data.results || []);
+}
+  
     async function runAiGenerate() {
       const destination = (tripState.destination || '').trim();
       const interests = (new URLSearchParams(window.location.search).get('interests') || '')
@@ -854,16 +1803,90 @@
       }
     }
 
-    // Demo save (backend save can be wired later)
+  async function runAiGenerate() {
+  const destination = (document.getElementById('destinationInput').value || tripState.destination || '').trim().slice(0,120);
+  document.getElementById('destinationInput').value = destination;
+  if (!destination) {
+    uiNotify('Missing destination', 'Enter a destination first.');
+    return;
+  }
+
+  const params = new URLSearchParams(window.location.search);
+  const interestsParam = params.get('interests') || '';
+  const interests = interestsParam
+    .split(',')
+    .map(s => s.trim())
+    .filter(Boolean);
+
+  try {
+    const res = await fetch('/ai/itinerary', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        destination: destination,
+        days: tripState.days,
+        interests: interests,
+      }),
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      throw new Error(data.detail || 'AI itinerary request failed');
+    }
+
+    const nextItemsByDay = {};
+    for (let d = 1; d <= tripState.days; d++) {
+      nextItemsByDay[d] = [];
+    }
+
+    for (const dayInfo of (data.itinerary || [])) {
+      const day = dayInfo.day;
+      if (!nextItemsByDay[day]) nextItemsByDay[day] = [];
+
+      const places = dayInfo.places || [];
+      nextItemsByDay[day] = places.map((place, idx) => ({
+        place_id: place.place_id,
+        name: place.name,
+        address: place.address,
+        rating: place.rating,
+        lat: place.lat,
+        lng: place.lng,
+        notes: '',
+        completed: false,
+        position: idx + 1,
+      }));
+    }
+
+    tripState.destination = destination;
+    tripState.itemsByDay = nextItemsByDay;
+    tripState.activeDay = 1;
+
+    renderDays();
+    renderItinerary();
+    renderResults(lastResults);
+
+    uiNotify('AI itinerary', 'AI itinerary generated!');
+  } catch (err) {
+    uiNotify('AI auto-generate failed', String(err.message || err));
+  }
+}
+
+
+
+
     async function saveTrip() {
       const token = getToken();
       if (!token) {
-        window.location.href = `/login?next=${encodeURIComponent(currentNextUrl())}`;
+        const nextUrl = currentNextUrlWithAutosave();
+        savePendingTripDraft(nextUrl);
+        window.location.href = `/login?next=${encodeURIComponent(nextUrl)}`;
         return;
       }
 
-      const destination = tripState.destination || document.getElementById('q').value.trim() || 'Destination';
-      const title = `Trip to ${destination}`;
+      const destination = (document.getElementById('destinationInput').value || tripState.destination || '').trim() || 'Destination';
+      const title = getTripTitle() || `Trip to ${destination}`;
+      if (!getTripTitle()) setTripTitle(title);
 
       const resTrip = await fetch('/trips', {
         method: 'POST',
@@ -872,7 +1895,9 @@
       });
       const trip = await resTrip.json().catch(() => ({}));
       if (!resTrip.ok) {
-        window.location.href = `/login?next=${encodeURIComponent(currentNextUrl())}`;
+        const nextUrl = currentNextUrlWithAutosave();
+        savePendingTripDraft(nextUrl);
+        window.location.href = `/login?next=${encodeURIComponent(nextUrl)}`;
         return;
       }
 
@@ -893,6 +1918,8 @@
               lng: item.lng,
               address: item.address,
               rating: item.rating,
+              arrival_time: item.arrival_time || null,
+              departure_time: item.departure_time || null,
             }),
           });
           const saved = await resItem.json().catch(() => ({}));
@@ -903,12 +1930,24 @@
         }
       }
 
-      alert('Trip saved!');
-
+      uiNotify('Saved', 'Trip saved!');
       await loadSavedTrips();
+
+      clearPendingTripDraft();
+
+      const url = new URL(window.location.href);
+      if (url.searchParams.get('autosave') === '1') {
+        url.searchParams.delete('autosave');
+        window.history.replaceState({}, '', url.toString());
+      }
+      tripState.currentTripId = null;
+      for (let d = 1; d <= tripState.days; d++) tripState.itemsByDay[d] = [];
+      tripState.activeDay = 1;
+      renderDays();
+      renderItinerary();
+      renderResultsPage();
     }
 
-    // helper
     function escapeHtml(str) {
       return String(str)
         .replaceAll('&', '&amp;')
@@ -917,6 +1956,122 @@
         .replaceAll('"', '&quot;')
         .replaceAll("'", '&#039;');
     }
+
+
+    let destinationSuggestTimer = null;
+
+async function fetchAutocomplete(input, opts = {}) {
+  const params = new URLSearchParams();
+  params.set('input', input);
+
+  if (opts.types) params.set('types', opts.types);
+
+  const res = await fetch(`/places/autocomplete?${params.toString()}`);
+  if (!res.ok) return [];
+  const data = await res.json();
+  return data.predictions || [];
+}
+
+function renderSuggestionList(container, items, onPick) {
+  if (!container) return;
+  container.innerHTML = '';
+
+  if (!items.length) {
+    container.classList.add('hidden');
+    return;
+  }
+
+  items.forEach((item) => {
+    const row = document.createElement('div');
+    row.className = 'suggestItem';
+    row.innerHTML = `
+      <div class="suggestMain">${escapeHtml(item.main_text || item.description || '')}</div>
+      <div class="suggestSub">${escapeHtml(item.secondary_text || '')}</div>
+    `;
+    row.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      onPick(item);
+    });
+    row.addEventListener('click', () => onPick(item));
+    container.appendChild(row);
+  });
+
+  container.classList.remove('hidden');
+}
+
+function hideSuggestionList(container) {
+  if (!container) return;
+  container.classList.add('hidden');
+}
+
+function cleanCityLabel(text) {
+  return String(text || '').replace(/, USA$/, '');
+}
+
+function setupDestinationAutocomplete() {
+  const input = document.getElementById('destinationInput');
+  const list = document.getElementById('destinationSuggestions');
+  if (!input || !list) return;
+
+  input.addEventListener('input', () => {
+    clearTimeout(destinationSuggestTimer);
+    const value = input.value.trim().slice(0, 120);
+
+    if (value.length < 2) {
+      hideSuggestionList(list);
+      return;
+    }
+
+    destinationSuggestTimer = setTimeout(async () => {
+      const predictions = await fetchAutocomplete(value, { types: '(cities)' });
+      renderSuggestionList(list, predictions, (item) => {
+        input.value = cleanCityLabel(item.description || item.main_text || '');
+        hideSuggestionList(list);
+        applyDestinationChange();
+      });
+    }, 250);
+  });
+
+  input.addEventListener('blur', () => {
+    setTimeout(() => hideSuggestionList(list), 150);
+  });
+
+  input.addEventListener('focus', () => {
+    const value = input.value.trim();
+    if (value.length >= 2) {
+      input.dispatchEvent(new Event('input'));
+    }
+  });
+}
+
+
+    function formatCharLeftText(left) {
+      if (left === 1) return '1 character left';
+      return `${left} characters left`;
+    }
+
+    function bindCharLeftCounter(inputEl, counterEl) {
+      if (!inputEl || !counterEl) return;
+      const limit = Number(inputEl.getAttribute('maxlength'));
+      if (!Number.isFinite(limit) || limit <= 0) return;
+
+      const update = () => {
+        const value = inputEl.value || '';
+        const left = Math.max(0, limit - value.length);
+        counterEl.textContent = formatCharLeftText(left);
+      };
+
+      inputEl.addEventListener('input', update);
+      update();
+    }
+
+    function setupCharLeftCounters() {
+      bindCharLeftCounter(document.getElementById('q'), document.getElementById('qCounter'));
+      bindCharLeftCounter(document.getElementById('destinationInput'), document.getElementById('destinationCounter'));
+
+    }
+
+    //  init from URL params 
 
     function renderPlannerProfileSummary() {
       const el = document.getElementById('plannerProfileSummary');
@@ -952,75 +2107,178 @@
 
 
 
-    if (destParam) tripState.destination = destParam;
-    if (daysParam && daysParam >= 1 && daysParam <= 7) {
-      tripState.days = daysParam;
-      tripState.itemsByDay = {};
-      for (let d = 1; d <= daysParam; d++) tripState.itemsByDay[d] = [];
-    }
+if (daysParam && daysParam >= 1 && daysParam <= 7) {
+  tripState.days = daysParam;
+  tripState.itemsByDay = {};
+  for (let d = 1; d <= daysParam; d++) tripState.itemsByDay[d] = [];
+}
 
+    const destinationInputEl = document.getElementById('destinationInput');
 
-    initDays();
-    renderItinerary();
-    renderResults([]);
+if (destParam) {
+  destinationInputEl.value = destParam;
+  tripState.destination = destParam;
+}
+
+setTripTitle(tripState.destination ? `Trip to ${tripState.destination}` : 'Trip');
+
+initDays();
+renderItinerary();
+renderResults([]);
     renderPlannerProfileSummary();
-    /*
-    if (qParam && !destParam) {
-      document.getElementById('q').value = qParam;
-      runSearch();
-    }
+setupCharLeftCounters();
+setupDestinationAutocomplete();
 
-    if (destParam) {
-      // If interests were provided, do multi-search and combine results
-      if (interestsParam) {
-        document.getElementById('q').value = interestsParam.split(',').join(', ') + ' in ' + destParam;
+if (destParam && interestsParam) {
+  document.getElementById('q').value = interestsParam.split(',').join(', ');
+  (async () => {
+    const merged = await searchByInterests(destParam, interestsParam);
+    renderResults(merged);
+  })();
+} else if (qParam) {
+  document.getElementById('q').value = qParam;
+  runSearch();
+}
 
-        (async () => {
-          const merged = await searchByInterests(destParam, interestsParam);
-          renderResults(merged);
-        })();
-      } else {
-        // fallback: regular single query search
-        document.getElementById('q').value = destParam;
-        runSearch();
-      }*/
-
-    if (destParam && interestsParam){
-      document.getElementById('q').value = interestsParam.split(',').join(', ') + ' in ' + destParam;
-      (async () => {
-        const merged = await searchByInterests(destParam, interestsParam);
-        renderResults(merged);
-      })();
-    } else if (qParam) {
-      document.getElementById('q').value = qParam;
-      runSearch();
-    } else if (destParam) {
-      document.getElementById('q').value = destParam;
-      runSearch();
-    }
-
-    updateSignInLink();
-    setSignedInUi(!!getToken());
-    if (getToken()) {
-      loadSavedTrips().catch(() => {});
-    }
-    
+updateSignInLink();
+setSignedInUi(!!getToken());
+if (getToken()) {
+  loadSavedTrips().catch(() => {});
+}
 
 
 
-
+const autogenParam = params.get('autogen');
+if (autogenParam == '1') {
+  setTimeout(() => {
+    runAiGenerate();
+  }, 250);
+}
   </script>
-  <div id="detailsModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:9999; padding:18px;">
-    <div style="max-width:720px; margin:40px auto; background:white; border-radius:16px; overflow:hidden;">
-      <div style="display:flex; justify-content:space-between; align-items:center; padding:14px 16px; border-bottom:1px solid rgba(11,18,32,.12);">
-        <div style="font-weight:900" id="detailsTitle">Place details</div>
-        <button onclick="closeDetails()" style="border:none; background:transparent; font-size:18px; cursor:pointer;">✕</button>
-      </div>
+</body>
+</html>
+ignInLink();
+setSignedInUi(!!getToken());
+if (getToken()) {
+  loadSavedTrips().catch(() => {});
+}
 
-      <div style="padding:16px;" id="detailsBody">
-        Loading…
-      </div>
-    </div>
-  </div>  
+const autogenParam = params.get('autogen');
+if (autogenParam == '1') {
+  setTimeout(() => {
+    runAiGenerate();
+  }, 250);
+}
+  </script>
+</body>
+</html>
+ = input.value.trim().slice(0, 120);
+
+    if (value.length < 2) {
+      hideSuggestionList(list);
+      return;
+    }
+
+    destinationSuggestTimer = setTimeout(async () => {
+      const predictions = await fetchAutocomplete(value, { types: '(cities)' });
+      renderSuggestionList(list, predictions, (item) => {
+        input.value = cleanCityLabel(item.description || item.main_text || '');
+        hideSuggestionList(list);
+        applyDestinationChange();
+      });
+    }, 250);
+  });
+
+  input.addEventListener('blur', () => {
+    setTimeout(() => hideSuggestionList(list), 150);
+  });
+
+  input.addEventListener('focus', () => {
+    const value = input.value.trim();
+    if (value.length >= 2) {
+      input.dispatchEvent(new Event('input'));
+    }
+  });
+}
+
+
+    function formatCharLeftText(left) {
+      if (left === 1) return '1 character left';
+      return `${left} characters left`;
+    }
+
+    function bindCharLeftCounter(inputEl, counterEl) {
+      if (!inputEl || !counterEl) return;
+      const limit = Number(inputEl.getAttribute('maxlength'));
+      if (!Number.isFinite(limit) || limit <= 0) return;
+
+      const update = () => {
+        const value = inputEl.value || '';
+        const left = Math.max(0, limit - value.length);
+        counterEl.textContent = formatCharLeftText(left);
+      };
+
+      inputEl.addEventListener('input', update);
+      update();
+    }
+
+    function setupCharLeftCounters() {
+      bindCharLeftCounter(document.getElementById('q'), document.getElementById('qCounter'));
+      bindCharLeftCounter(document.getElementById('destinationInput'), document.getElementById('destinationCounter'));
+
+    }
+
+    //  init from URL params 
+    const params = new URLSearchParams(window.location.search);
+const qParam = params.get('q');
+const destParam = params.get('dest');
+const daysParam = parseInt(params.get('days'));
+const interestsParam = params.get('interests');
+
+if (daysParam && daysParam >= 1 && daysParam <= 7) {
+  tripState.days = daysParam;
+  tripState.itemsByDay = {};
+  for (let d = 1; d <= daysParam; d++) tripState.itemsByDay[d] = [];
+}
+
+    const destinationInputEl = document.getElementById('destinationInput');
+
+if (destParam) {
+  destinationInputEl.value = destParam;
+  tripState.destination = destParam;
+}
+
+setTripTitle(tripState.destination ? `Trip to ${tripState.destination}` : 'Trip');
+
+initDays();
+renderItinerary();
+renderResults([]);
+setupCharLeftCounters();
+setupDestinationAutocomplete();
+
+if (destParam && interestsParam) {
+  document.getElementById('q').value = interestsParam.split(',').join(', ');
+  (async () => {
+    const merged = await searchByInterests(destParam, interestsParam);
+    renderResults(merged);
+  })();
+} else if (qParam) {
+  document.getElementById('q').value = qParam;
+  runSearch();
+}
+
+updateSignInLink();
+setSignedInUi(!!getToken());
+if (getToken()) {
+  loadSavedTrips().catch(() => {});
+}
+
+const autogenParam = params.get('autogen');
+if (autogenParam == '1') {
+  setTimeout(() => {
+    runAiGenerate();
+  }, 250);
+}
+  </script>
 </body>
 </html>

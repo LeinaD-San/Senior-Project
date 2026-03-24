@@ -4,7 +4,7 @@ import hashlib
 import hmac
 import secrets
 
-from fastapi import FastAPI, Depends, HTTPException, Header
+from fastapi import FastAPI, Depends, HTTPException, Header, Query
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from typing import List, Annotated, Optional
@@ -16,13 +16,18 @@ from database import engine, SessionLocal
 from sqlalchemy.orm import Session
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.exc import OperationalError
+from sqlalchemy import text
 
 from pathlib import Path
-from fastapi.responses import FileResponse
+
+import json
+from openai import OpenAI
 
 BASE_DIR = Path(__file__).resolve().parent
 
 load_dotenv()
+
+openai_client = OpenAI()
 
 app = FastAPI(title="Travel Agent API")
 
@@ -61,6 +66,9 @@ app.add_middleware(
 def on_startup():
     try:
         models.Base.metadata.create_all(bind=engine)
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE trip_item ADD COLUMN IF NOT EXISTS arrival_time VARCHAR"))
+            conn.execute(text("ALTER TABLE trip_item ADD COLUMN IF NOT EXISTS departure_time VARCHAR"))
     except OperationalError: 
         print("ABORT ABORT, MAKE SURE YOU START WITH THE: docker compose up -d : OR ELSE THERE WILL BE ISSUES")
 
@@ -80,6 +88,10 @@ class TripCreate(BaseModel):
     destination: str = Field(min_length=1, max_length=200)
 
 
+class TripUpdate(BaseModel):
+    title: str = Field(min_length=1, max_length=200)
+
+
 class AuthPayload(BaseModel):
     email: str = Field(min_length=3, max_length=320)
     password: str = Field(min_length=8, max_length=200)
@@ -90,22 +102,27 @@ class SessionResponse(BaseModel):
 
 class TripItemCreate(BaseModel):
     day: int = Field(ge=1, le=30)
-    place_id: str
-    name: str
-    notes: str = ""
+    place_id: str = Field(min_length=1, max_length=200)
+    name: str = Field(min_length=1, max_length=200)
+    notes: str = Field(default="", max_length=1000)
 
     lat: Optional[float] = None
     lng: Optional[float] = None
     address: Optional[str] = None
     rating: Optional[float] = None
 
+    arrival_time: Optional[str] = Field(default=None, max_length=5)
+    departure_time: Optional[str] = Field(default=None, max_length=5)
+
 
 class TripItemUpdate(BaseModel):
-    notes: Optional[str] = None
+    notes: Optional[str] = Field(default=None, max_length=1000)
     completed: Optional[bool] = None
+    arrival_time: Optional[str] = Field(default=None, max_length=5)
+    departure_time: Optional[str] = Field(default=None, max_length=5)
 
 class ItineraryRequest(BaseModel):
-    destination: str
+    destination: str = Field(min_length=1, max_length=120)
     days: int = Field(ge=1, le=14)
     interests: List[str] = []
 
@@ -131,10 +148,50 @@ class AIItineraryResponse(BaseModel):
 class ReorderPayload(BaseModel):
     ordered_item_ids: List[int] = Field(min_length=1)
 
+
+AI_OUTLINE_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "destination": {"type": "string"},
+        "days": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "day": {"type": "integer"},
+                    "theme": {"type": "string"},
+                    "queries": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "minItems": 3,
+                        "maxItems": 3
+                    }
+                },
+                "required": ["day", "theme", "queries"],
+                "additionalProperties": False
+            }
+        }
+    },
+    "required": ["destination", "days"],
+    "additionalProperties": False
+}
+
+
 #app Health/activity
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+@app.get("/ai/test")
+def ai_test():
+    try: 
+        response = openai_client.responses.create(
+            model= "gpt-5-mini",
+            input= "Say hello in one short sentence." 
+        )
+        return {"ok": True, "text": response.output_text}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 def _hash_password(password: str, salt_b64: str) -> str:
@@ -262,6 +319,19 @@ def list_trips(db: db_dependency, user: models.User = Depends(get_current_user))
     ]
 
 
+@app.patch("/trips/{trip_id}")
+def update_trip(trip_id: int, payload: TripUpdate, db: db_dependency, user: models.User = Depends(get_current_user)):
+    trip = db.get(models.Trip, trip_id)
+    if not trip:
+        raise HTTPException(status_code=404, detail="Trip not found")
+    if trip.user_id != user.id:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    trip.title = payload.title
+    db.commit()
+    db.refresh(trip)
+    return {"id": trip.id, "title": trip.title, "destination": trip.destination}
+
+
 @app.post("/trips/{trip_id}/items")
 def add_trip_item(trip_id: int, payload: TripItemCreate, db: db_dependency, user: models.User = Depends(get_current_user)):
     trip = db.get(models.Trip, trip_id)
@@ -294,6 +364,8 @@ def add_trip_item(trip_id: int, payload: TripItemCreate, db: db_dependency, user
         lng=payload.lng,
         address =payload.address,
         rating=payload.rating,
+        arrival_time=payload.arrival_time,
+        departure_time=payload.departure_time,
     )
     db.add(item)
     db.commit()
@@ -311,6 +383,8 @@ def add_trip_item(trip_id: int, payload: TripItemCreate, db: db_dependency, user
         "lng": item.lng,
         "address": item.address,
         "rating": item.rating,
+        "arrival_time": item.arrival_time,
+        "departure_time": item.departure_time,
     }
 
 
@@ -345,6 +419,8 @@ def get_trip(trip_id: int, db: db_dependency, user: models.User = Depends(get_cu
                 "lng": i.lng,
                 "address": i.address,
                 "rating": i.rating,
+                "arrival_time": i.arrival_time,
+                "departure_time": i.departure_time,
             }
             for i in items
         ],
@@ -402,6 +478,10 @@ def update_trip_item(
         item.notes = updates['notes']
     if 'completed' in updates:
         item.completed = 1 if updates['completed'] else 0
+    if 'arrival_time' in updates:
+        item.arrival_time = updates['arrival_time']
+    if 'departure_time' in updates:
+        item.departure_time = updates['departure_time']
     db.commit()
     db.refresh(item)
     return {
@@ -413,6 +493,8 @@ def update_trip_item(
         'name': item.name,
         'notes': item.notes,
         'completed': bool(item.completed),
+        'arrival_time': item.arrival_time,
+        'departure_time': item.departure_time,
     }
 
 @app.put("/trips/{trip_id}/days/{day}/reorder")
@@ -512,7 +594,7 @@ async def places_search(q: str, lat: Optional[float] = None, lng: Optional[float
 '''
 @app.get("/places/search")
 async def places_search(
-    q: str,
+    q: str = Query(min_length=1, max_length=120),
     lat: Optional[float] = None,
     lng: Optional[float] = None,
     radius: int = 30000
@@ -544,12 +626,13 @@ async def places_search(
     for p in data.get("results", []):
         location = p.get("geometry", {}).get("location", {})
 
-        # ✅ Build a thumbnail URL if Google returned a photo_reference
-        photos = p.get("photos", [])
-        photo_url = None
-        if photos and photos[0].get("photo_reference"):
-            ref = photos[0]["photo_reference"]
-            photo_url = (
+        # Build a thumbnail URL if Google returned a photo_reference
+        raw_photos = p.get("photos", [])
+        photo_urls = []
+        for ph in raw_photos[:5]:
+            ref = ph.get("photo_reference")
+            if ref:
+                photo_urls.append(
                 "https://maps.googleapis.com/maps/api/place/photo"
                 f"?maxwidth=400&photo_reference={ref}&key={api_key}"
             )
@@ -561,13 +644,49 @@ async def places_search(
             "rating": p.get("rating"),
             "lat": location.get("lat"),
             "lng": location.get("lng"),
-            "photo_url": photo_url,   # ✅ added
+            "photo_url": photo_urls[0] if raw_photos else None,
+            "photos": photo_urls,
         })
 
     return {"query": q, "count": len(results), "results": results}
 
 
+@app.get("/places/autocomplete")
+async def places_autocomplete(
+    input: str = Query(min_length=1, max_length=120),
+    types: Optional[str] = None,
+):
+    api_key = os.getenv("GOOGLE_MAPS_API_KEY")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="GOOGLE_MAPS_API_KEY is not set")
 
+    url = "https://maps.googleapis.com/maps/api/place/autocomplete/json"
+    params = {
+        "input": input,
+        "key": api_key,
+    }
+    if types:
+        params["types"] = types
+    async with httpx.AsyncClient(timeout=15)as client:
+        r = await client.get(url, params=params)
+        r.raise_for_status()
+        data= r.json()
+    status = data.get('status')
+    if status not in ('OK', "ZERO_RESULTS"):
+        raise HTTPException(
+            status_code=502,
+            detail={"google_status": status, 'error': data.get('error_message')},
+        )
+        
+    predictions = []
+    for p in data.get('predictions',[]):
+        predictions.append({
+            'description': p.get('description'),
+            'place_id':p.get('place_id'),
+            'main_text':(p.get('structured_formatting') or {}).get('main_text'),
+            'secondary_text': (p.get('structured_formatting') or {}).get('secondary_text'),
+        })
+    return {'count': len(predictions), 'predictions': predictions}
 
 @app.get('/places/details/{place_id}')
 async def place_details(place_id:str):
@@ -815,4 +934,5 @@ async def ai_itinerary(body: ItineraryRequest):
             ],
         })
     return {"destination": body.destination, "days": body.days, "itinerary": itinerary, "note": "AI stub"}
+'''
 """
