@@ -763,7 +763,7 @@ def distribute_places_across_days(places: List[dict], days: int, max_stops_per_d
 
     limited = places[: days * max_stops_per_day]
 
-    for idx, place in enamurated(limited):
+    for idx, place in enumerate(limited):
         day_index = idx % days
         itinerary[day_index]["stops"].append({
             "place_id": place.get("place_id"),
@@ -785,7 +785,7 @@ async def ai_itinerary(body: ItineraryRequest):
         results = await search_places_for_interests(body.destination, interest)
         all_places.extend(results)
     
-    deduped = deduped_places(all_places)
+    deduped = dedupe_places(all_places)
 
     #sort better rated places first when possible
     deduped.sort(key=lambda p: (p.get("rating") is not None, p.get("rating") or 0), reverse=True)
