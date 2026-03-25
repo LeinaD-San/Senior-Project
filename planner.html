@@ -547,6 +547,9 @@
           <div id="qCounter" style="margin-top:0;font-size:10px;line-height:1.1;color:rgba(11,18,32,.55);" aria-live="polite"></div>
 
         </div>
+        <div class="searchCard" id="plannerProfileSummary" style="color:var(--muted); font-size:13px; line-height:1.5;">
+          No personalization loaded yet.
+          </div>
 
         <div class="results" id="results"></div>
       </div>
@@ -902,6 +905,20 @@
       });
     }
 
+    function renderPlannerProfileSummary() {
+      const el = document.getElementById('plannerProfileSummary');
+      if (!el) return;
+
+      el.innerHTML= `
+          <strong style="color:var(--ink);">Traveler profile:</strong><br>
+          Group: ${personalizationProfile.group_type}<br>
+          Pace: ${personalizationProfile.pace}<br>
+          Budget: ${personalizationProfile.budget}<br>
+          Place style: ${personalizationProfile.place_style}<br>
+          Food focus: ${personalizationProfile.food_focus ? 'Yes' : 'No'}
+        `;
+      }
+
     // details modal
     async function openDetails(placeId) {
       const modal = document.getElementById("detailsModal");
@@ -1065,14 +1082,6 @@
         await fetch('/auth/logout', { method: 'POST', headers: { Authorization: `Bearer ${token}` } }).catch(() => {});
       }
     }
-
-    let personalizationProfile = {
-      group_type: 'solo',
-      pace: 'balanced',
-      budget: 'medium',
-      place_style: 'mix',
-      food_focus: true,
-    };
 
     let personalizationProfile = {
       group_type: 'solo',
@@ -1729,83 +1738,12 @@
   const data = await res.json();
   renderResults(data.results || []);
 }
-  
-    async function runAiGenerate() {
-      const destination = (tripState.destination || '').trim();
-      const interests = (new URLSearchParams(window.location.search).get('interests') || '')
-        .split(',')
-        .map(s => s.trim())
-        .filter(Boolean);
 
-      if (!destination) {
-        alert('No destination found.');
-        return;
-      }
-      try {
-        const res = await fetch('/ai/itinerary', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json'},
-          body: JSON.stringify({
-            destination: destination,
-            days: tripState.days,
-            interests: interests,
-            profile: personalizationProfile
-          }),
-        });
-
-        const data = await res.json().catch(() => ({}));
-
-        if (!res.ok) {
-          throw new Error(data.detail || 'AI itinerary request failed');
-        }
-        
-        const nextItemsByDay = {};
-        for (let d = 1; d <= tripState.days; d++) {
-          nextItemsByDay[d] = [];
-        }
-
-        const returnedDays = data.itinerary || [];
-        returnedDays.forEach((dayInfo) => {
-          const day = dayInfo.day;
-          if (!nextItemsByDay[day]) nextItemsByDay[day] = [];
-
-          const places = dayInfo.stops || dayInfo.places || [];
-          nextItemsByDay[day] = places.map((place, idx) => ({
-            place_id: place.place_id,
-            name: place.name, 
-            address: place.address || '',
-            rating: place.rating || null,
-            lat: place.lat || null,
-            lng: place.lng || null,
-            notes: '',
-            completed: false,
-            position: idx + 1,
-          }));
-        });
-
-        tripState.destination = destination;
-        tripState.itemsByDay = nextItemsByDay;
-        tripState.activeDay = 1;
-
-        initDays();
-        renderDays();
-        renderItinerary();
-
-
-        console.log('FULL AI RESPONSE:',data);
-        console.log('ITINERARY FIELD:',data.itinerary);
-
-        alert('AI itinerary generated!');
-        console.log('AI itinerary response: ', data);
-      } catch (err) {
-        alert('AI auto-generate failed: ' + err.message);
-        console.error(err);
-      }
-    }
 
   async function runAiGenerate() {
-  const destination = (document.getElementById('destinationInput').value || tripState.destination || '').trim().slice(0,120);
+  const destination = (document.getElementById('destinationInput').value || tripState.destination || '').trim().slice(0, 120);
   document.getElementById('destinationInput').value = destination;
+
   if (!destination) {
     uiNotify('Missing destination', 'Enter a destination first.');
     return;
@@ -1826,10 +1764,11 @@
         destination: destination,
         days: tripState.days,
         interests: interests,
+        profile: personalizationProfile
       }),
     });
 
-    const data = await res.json();
+    const data = await res.json().catch(() => ({}));
 
     if (!res.ok) {
       throw new Error(data.detail || 'AI itinerary request failed');
@@ -1840,38 +1779,44 @@
       nextItemsByDay[d] = [];
     }
 
-    for (const dayInfo of (data.itinerary || [])) {
+    const returnedDays = data.itinerary || [];
+    returnedDays.forEach((dayInfo) => {
       const day = dayInfo.day;
       if (!nextItemsByDay[day]) nextItemsByDay[day] = [];
 
-      const places = dayInfo.places || [];
+      const places = dayInfo.stops || dayInfo.places || [];
       nextItemsByDay[day] = places.map((place, idx) => ({
         place_id: place.place_id,
         name: place.name,
-        address: place.address,
-        rating: place.rating,
-        lat: place.lat,
-        lng: place.lng,
+        address: place.address || '',
+        rating: place.rating || null,
+        lat: place.lat || null,
+        lng: place.lng || null,
         notes: '',
         completed: false,
         position: idx + 1,
+        arrival_time: null,
+        departure_time: null,
       }));
-    }
+    });
 
     tripState.destination = destination;
     tripState.itemsByDay = nextItemsByDay;
     tripState.activeDay = 1;
 
+    initDays();
     renderDays();
     renderItinerary();
-    renderResults(lastResults);
+
+    console.log('FULL AI RESPONSE:', data);
+    console.log('ITINERARY FIELD:', data.itinerary);
 
     uiNotify('AI itinerary', 'AI itinerary generated!');
   } catch (err) {
     uiNotify('AI auto-generate failed', String(err.message || err));
+    console.error(err);
   }
 }
-
 
 
 
@@ -2125,7 +2070,7 @@ setTripTitle(tripState.destination ? `Trip to ${tripState.destination}` : 'Trip'
 initDays();
 renderItinerary();
 renderResults([]);
-    renderPlannerProfileSummary();
+renderPlannerProfileSummary();
 setupCharLeftCounters();
 setupDestinationAutocomplete();
 

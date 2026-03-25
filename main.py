@@ -121,10 +121,18 @@ class TripItemUpdate(BaseModel):
     arrival_time: Optional[str] = Field(default=None, max_length=5)
     departure_time: Optional[str] = Field(default=None, max_length=5)
 
+class TripProfile(BaseModel):
+    group_type: str = 'solo'
+    pace: str = 'balanced'
+    budget: str = 'medium'
+    place_style: str = 'mix'
+    food_focus: bool = True
+
 class ItineraryRequest(BaseModel):
     destination: str = Field(min_length=1, max_length=120)
     days: int = Field(ge=1, le=14)
     interests: List[str] = []
+    profile: Optional[TripProfile]=None
 
 
 #AI classes will give the backend a clean response format
