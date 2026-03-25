@@ -837,13 +837,46 @@ INTEREST_QUERY_MAP = {
     "history": "historic sites",
 }
 
+def build_interest_query(destination: str, interest: str, profile: Optional[TripProfile]) -> str:
+    search_term = INTEREST_QUERY_MAP.get(interest, interest)
+    profile = profile or TripProfile()
+
+    modifiers: list[str] = []
+
+    if profile.budget == 'low':
+        modifiers.append('affordable')
+    elif profile.budget == 'high':
+        modifiers.append('upscale')
+
+    if profile.place_style == 'hidden_gems':
+        modifiers.append('local hidden gems')
+    elif profile.place_style == 'tourist_spots':
+        modifiers.append('popular tourist spots')
+
+    if profile.group_type == 'family':
+        modifiers.append('family friendly')
+    elif profile.group_type == 'couple':
+        modifiers.append('romantic scenic')
+    elif profile.group_type == 'friends':
+        modifiers.append('fun social')
+    elif profile.group_type == 'solo':
+        modifiers.append('solo friendly')
+
+    if profile.food_focus and interest in ('food', 'coffee'):
+        modifiers.append('popular local')
+
+    modifier_text = ' '.join(m for m in modifiers if m).strip()
+    if modifier_text:
+        return f'{modifier_text} {search_term} in {destination}'
+    return f'{search_term} in {destination}'
+
 #will give us real place candidates from google. 
-async def search_places_for_interests(destination: str, interest:str) -> List[dict]:
+async def search_places_for_interests(destination: str, interest:str, profile: Optional[TripProfile]=None) -> List[dict]:
     api_key = os.getenv("GOOGLE_MAPS_API_KEY")
     if not api_key:
         raise HTTPException(status_code=500, detail="GOOGLE_MAPS_API_KEY is not set")
-    search_term = INTEREST_QUERY_MAP.get(interest, interest)
-    query = f"{search_term} in {destination}"
+
+    query = build_interest_query(destination, interest, profile)
 
     url = "https://maps.googleapis.com/maps/api/place/textsearch/json"
     params = {"query": query, "key": api_key}
@@ -884,6 +917,28 @@ def dedupe_places(places: List[dict]) -> List[dict]:
         seen.add(place_id)
         deduped.append(p)
     return deduped
+
+
+def score_place(place: dict, interest:str, profile: Optional[TripProfile]) -> float:
+    profile = profile or TripProfile()
+    score = 0.0
+
+    rating = place.get('rating')
+    if isinstance(rating, (int, float)):
+        score += float(rating) * 10
+
+    name = (place.get('name') or '').lower()
+    address = (place.get('address') or '').lower()
+    text_blob = f'{name} {address}'
+
+    if profile.place_style == 'hidden_gems':
+        if 'museum of' not in text_blob and 'visitor center' not in text_blob:
+            score += 8
+    elif profile.place_style == 'tourist_spots':
+        if 'museum' in text_blob or 'park' in text_blob or 'historic' in text_blob:
+            score += 6
+
+    
 
 def distribute_places_across_days(places: List[dict], days: int, max_stops_per_day: int = 3) -> List[dict]:
     itinerary = [{"day": d, "stops": []} for d in range(1, days + 1)]
