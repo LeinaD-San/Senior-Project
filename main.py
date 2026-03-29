@@ -874,9 +874,9 @@ def build_interest_query(destination: str, interest: str, profile: Optional[Trip
     modifiers: list[str] = []
 
     if profile.budget == 'low':
-        modifiers.append('affordable')
+        modifiers.append('affordable budget friendly')
     elif profile.budget == 'high':
-        modifiers.append('upscale')
+        modifiers.append('upscale premium')
 
     if profile.place_style == 'hidden_gems':
         modifiers.append('local hidden gems')
@@ -884,16 +884,16 @@ def build_interest_query(destination: str, interest: str, profile: Optional[Trip
         modifiers.append('popular tourist spots')
 
     if profile.group_type == 'family':
-        modifiers.append('family friendly')
+        modifiers.append('family friendly kid friendly')
     elif profile.group_type == 'couple':
-        modifiers.append('romantic scenic')
+        modifiers.append('romantic date night scenic')
     elif profile.group_type == 'friends':
-        modifiers.append('fun social')
+        modifiers.append('group fun social lively')
     elif profile.group_type == 'solo':
-        modifiers.append('solo friendly')
+        modifiers.append('solo friendly relaxed independent')
 
     if profile.food_focus and interest in ('food', 'coffee'):
-        modifiers.append('popular local')
+        modifiers.append('popular local must try')
 
     modifier_text = ' '.join(m for m in modifiers if m).strip()
     if modifier_text:
@@ -924,7 +924,7 @@ async def search_places_for_interests(destination: str, interest:str, profile: O
         )
 
     results = []
-    for p in data.get("results", [])[:8]:
+    for p in data.get("results", [])[:12]:
         location = p.get("geometry",{}).get("location", {})
         results.append({
             "place_id": p.get("place_id"),
@@ -962,13 +962,48 @@ def score_place(place: dict, interest:str, profile: Optional[TripProfile]) -> fl
     text_blob = f'{name} {address}'
 
     if profile.place_style == 'hidden_gems':
-        if 'museum of' not in text_blob and 'visitor center' not in text_blob:
-            score += 8
+        if any(word in text_blob for word in ['local', 'coffee', 'cafe', 'market', 'garden', 'bookstore', 'neighborhood']):
+            score += 12
+        if any(word in text_blob for word in ['visitor center', 'airport', 'mall']):
+            score -= 8     
     elif profile.place_style == 'tourist_spots':
-        if 'museum' in text_blob or 'park' in text_blob or 'historic' in text_blob:
-            score += 6
-    if interest in ("food", "coffee") and profile.food_focus:
-        score += 5
+        if any(word in text_blob for word in ['museum', 'park', 'historic', 'landmark', 'tower', 'zoo', 'aquarium']):
+            score += 10
+
+    if profile.group_type == 'family':
+        if any(word in text_blob for word in ['park', 'zoo', 'museum', 'garden', 'family', 'aquarium']):
+            score += 12
+        if any(word in text_blob for word in ['bar', 'nightclub', 'lounge']):
+            score -= 20
+    
+    elif profile.group_type == 'couple':
+        if any(word in text_blob for word in ['scenic', 'garden', 'romantic', 'wine', 'view', 'bistro']):
+            score += 12
+
+    elif profile.group_type == 'friends':
+        if any(word in text_blob for word in ['bar', 'market', 'entertainment', 'social', 'brew', 'nightlife']):
+            score += 12
+
+    elif profile.group_type == 'solo':
+        if any(word in text_blob for word in ['museum', 'coffee', 'park', 'bookstore', 'walk', 'historic']):
+            score += 8
+
+    if profile.food_focus and interest in ('food', 'coffee'):
+        score += 12
+
+    if profile.budget == 'low':
+        if any(word in text_blob for word in ['cafe', 'park', 'market', 'trail', 'historic', 'coffee']):
+            score += 8
+        if any(word in text_blob for word in ['steakhouse', 'luxury', 'resort', 'fine dining']):
+            score -= 12
+
+    elif profile.budget == 'high':
+        if any(word in text_blob for word in ['steakhouse', 'fine dining', 'resort', 'upscale', 'grill']):
+            score += 10
+
+    return score
+    
+    
     
     if profile.group_type == "family" and ("park" in text_blob or "museum" in text_blob):
         score += 4
@@ -1037,23 +1072,34 @@ def distribute_places_across_days(
 @app.post("/ai/itinerary", response_model=AIItineraryResponse)
 async def ai_itinerary(body: ItineraryRequest):
     interests = body.interests or ["food", "coffee", "parks"]
+    profile = body.profile or TripProfile()
 
-    all_places = []
+    scored_places = []
     for interest in interests:
         results = await search_places_for_interests(body.destination, interest)
         for place in results: 
             place["_interest"] = interest
-        all_places.extend(results)
+            scored_places.append((score_place(place, interest, profile), place))
     
-    deduped = dedupe_places(all_places)
+    #deduped = dedupe_places(all_places)
 
-    for place in deduped:
-        place ["_score"] = score_place(place, place.get("_interest", ""), body.profile)
+    best_by_place_id: dict[str, tuple[float, dict]] = {}
+    for score, place in scored_places:
+        place_id = place.get('place_id')
+        if not place_id:
+            continue
+        place['_score'] = score
+        current = best_by_place_id.get(place_id)
+        if current is None or score > current[0]:
+            best_by_place_id[place_id] = (score, place)
+    ranked_places = [item[1] for item in sorted(best_by_place_id.values(), key=lambda x: x[0], reverse=True)]
 
-    #sort better rated places first when possible
-    deduped.sort(key=lambda p: (p.get("rating") is not None, p.get("rating") or 0), reverse=True)
-
-    itinerary = distribute_places_across_days(deduped, body.days, max_stops_per_day=3)
+    max_stops_per_day = 3
+    if profile.pace =='relaxed':
+        max_stops_per_day = 2
+    elif profile.pace == 'packed':
+        max_stops_per_day = 4
+    itinerary = distribute_places_across_days(ranked_places, body.days, max_stops_per_day=max_stops_per_day)
     
     return {
         "destination": body.destination,
