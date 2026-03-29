@@ -69,6 +69,11 @@ def on_startup():
         with engine.begin() as conn:
             conn.execute(text("ALTER TABLE trip_item ADD COLUMN IF NOT EXISTS arrival_time VARCHAR"))
             conn.execute(text("ALTER TABLE trip_item ADD COLUMN IF NOT EXISTS departure_time VARCHAR"))
+            
+            #temporarily commenting these out until the database issue is fixed where user is not being read
+            conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS name VARCHAR"))
+            conn.execute(text("UPDATE users SET name = 'Traveler' WHERE name IS NULL"))
+            
     except OperationalError: 
         print("ABORT ABORT, MAKE SURE YOU START WITH THE: docker compose up -d : OR ELSE THERE WILL BE ISSUES")
 
@@ -92,13 +97,18 @@ class TripUpdate(BaseModel):
     title: str = Field(min_length=1, max_length=200)
 
 
-class AuthPayload(BaseModel):
+class RegisterPayload(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
     email: str = Field(min_length=3, max_length=320)
     password: str = Field(min_length=8, max_length=200)
 
+class LoginPayload(BaseModel):
+    email: str = Field(min_length=3, max_length=320)
+    password: str = Field(min_length=8, max_length=200)
 
 class SessionResponse(BaseModel):
     token: str
+    user: dict
 
 class TripItemCreate(BaseModel):
     day: int = Field(ge=1, le=30)
@@ -143,6 +153,9 @@ class AIStop(BaseModel):
     rating: Optional[float] = None
     lat: Optional[float] = None
     lng: Optional[float] = None
+    arrival_time: Optional[str] = None
+    departure_time: Optional[str] = None
+    suggestion_note: Optional[str] = None
     
 class AIDay(BaseModel):
     day: int
@@ -248,14 +261,19 @@ def get_current_user(
 
 
 @app.post("/auth/register", response_model=SessionResponse)
-def auth_register(payload: AuthPayload, db: db_dependency):
+def auth_register(payload: RegisterPayload, db: db_dependency):
     existing = db.query(models.User).filter(models.User.email == payload.email.lower()).first()
     if existing:
         raise HTTPException(status_code=400, detail="Email already registered")
 
     salt_b64 = _new_salt_b64()
     password_hash = _hash_password(payload.password, salt_b64)
-    user = models.User(email=payload.email.lower(), password_salt=salt_b64, password_hash=password_hash)
+    user = models.User(
+        name=payload.name.strip(),
+        email=payload.email.lower(), 
+        password_salt=salt_b64, 
+        password_hash=password_hash
+    )
     db.add(user)
     db.commit()
     db.refresh(user)
@@ -269,11 +287,17 @@ def auth_register(payload: AuthPayload, db: db_dependency):
     db.add(session)
     db.commit()
 
-    return {"token": token}
+    return {"token": token,
+            "user": {
+                "id": user.id,
+                "name": user.name,
+                "email": user.email,
+            },
+        }
 
 
 @app.post("/auth/login", response_model=SessionResponse)
-def auth_login(payload: AuthPayload, db: db_dependency):
+def auth_login(payload: LoginPayload, db: db_dependency):
     user = db.query(models.User).filter(models.User.email == payload.email.lower()).first()
     if not user:
         raise HTTPException(status_code=401, detail="Invalid email or password")
@@ -290,7 +314,13 @@ def auth_login(payload: AuthPayload, db: db_dependency):
     )
     db.add(session)
     db.commit()
-    return {"token": token}
+    return {"token": token,
+            "user": {
+                "id": user.id,
+                "name": user.name,
+                "email": user.email,
+            },
+        }
 
 
 @app.post("/auth/logout")
@@ -306,7 +336,7 @@ def auth_logout(db: db_dependency, authorization: str | None = Header(default=No
 
 @app.get("/me")
 def me(user: models.User = Depends(get_current_user)):
-    return {"id": user.id, "email": user.email}
+    return {"id": user.id, "name": user.name, "email": user.email}
 
 #DB--Trips
 @app.post("/trips")
@@ -975,14 +1005,56 @@ def score_place(place: dict, interest:str, profile: Optional[TripProfile]) -> fl
     
     
     
+    if profile.group_type == "family" and ("park" in text_blob or "museum" in text_blob):
+        score += 4
+    if profile.group_type == "couple" and ("cafe" in text_blob or "scenic" in text_blob):
+        score += 5
+    if profile.group_type == "friends" and ("bar" in text_blob or "shopping" in text_blob):
+        score += 4
+    
+    return score
 
-def distribute_places_across_days(places: List[dict], days: int, max_stops_per_day: int = 3) -> List[dict]:
+def build_day_time_slots(profile: Optional[TripProfile] = None) -> list[tuple[str, str]]:
+    profile = profile or TripProfile()
+
+    if profile.pace == "relaxed":
+        return [
+            ("10:00", "11:30"),
+            ("13:00", "14:30"),
+            ("16:00", "18:00"),
+        ]
+    elif profile.pace == "fast":
+        return [
+            ("08:30", "10:00"),
+            ("10:30", "12:00"),
+            ("13:00", "14:30"),
+        ]
+    else:
+        return [
+            ("09:00", "10:30"),
+            ("12:00", "13:30"),
+            ("15:00", "17:00"),
+        ]
+
+def distribute_places_across_days(
+    places: List[dict], 
+    days: int, 
+    profile: Optional[TripProfile] = None,
+    max_stops_per_day: int = 3) -> List[dict]:
     itinerary = [{"day": d, "stops": []} for d in range(1, days + 1)]
+    time_slots = build_day_time_slots(profile)
 
     limited = places[: days * max_stops_per_day]
 
     for idx, place in enumerate(limited):
         day_index = idx % days
+        stop_index_for_day = len(itinerary[day_index]["stops"])
+        
+        arrival_time = None
+        departure_time = None
+        if stop_index_for_day < len(time_slots):
+            arrival_time, departure_time = time_slots[stop_index_for_day]
+
         itinerary[day_index]["stops"].append({
             "place_id": place.get("place_id"),
             "name": place.get("name"),
@@ -990,6 +1062,9 @@ def distribute_places_across_days(places: List[dict], days: int, max_stops_per_d
             "rating": place.get("rating"),
             "lat": place.get("lat"),
             "lng":place.get("lng"),
+            "arrival_time": arrival_time,
+            "departure_time": departure_time,
+            "suggestion_note": "Suggested by AI. You can keep, replace, or edit this stop.",
         })
     return itinerary
 
@@ -1001,9 +1076,10 @@ async def ai_itinerary(body: ItineraryRequest):
 
     scored_places = []
     for interest in interests:
-        results = await search_places_for_interests(body.destination, interest,profile)
-        for place in results:
-            scored_places.append((score_place(place, interest, profile),place))
+        results = await search_places_for_interests(body.destination, interest)
+        for place in results: 
+            place["_interest"] = interest
+            scored_places.append((score_place(place, interest, profile), place))
     
     #deduped = dedupe_places(all_places)
 
@@ -1012,6 +1088,7 @@ async def ai_itinerary(body: ItineraryRequest):
         place_id = place.get('place_id')
         if not place_id:
             continue
+        place['_score'] = score
         current = best_by_place_id.get(place_id)
         if current is None or score > current[0]:
             best_by_place_id[place_id] = (score, place)
