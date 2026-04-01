@@ -957,6 +957,7 @@
             ${data.website ? `<div><b>Website:</b> <a href="${data.website}" target="_blank" rel="noreferrer">${escapeHtml(data.website)}</a></div>` : ""}
             ${typeof data.open_now === "boolean" ? `<div><b>Open now:</b> ${data.open_now ? "Yes" : "No"}</div>` : ""}
             ${data.rating ? `<div><b>Rating:</b> <span class="starIcon"></span>${escapeHtml(String(data.rating))}</div>` : ""}
+            ${formatPriceLevel(data.price_Level) ? '<div><b>Price:</b> ${escapeHtml(formatPriceLevel(data.price_level))}</div>': ""}
           </div>
           ${photosHtml}
           ${hoursHtml}
@@ -1062,6 +1063,19 @@
       document.getElementById('signInLink').style.display = signedIn ? 'none' : '';
       document.getElementById('logoutBtn').style.display = signedIn ? '' : 'none';
       document.getElementById('savedTripsCard').style.display = signedIn ? '' : 'none';
+    }
+
+    function formatPriceEstimate(score){
+      const value = Number(score);
+      if (!Number.isFinite(value) || value < 1) return '';
+        return `${Math.min(10, Math.max(1, Math.round(value)))}/10`;
+      }
+
+    function formatPriceLevel(priceLevel){
+      if (priceLevel === null || priceLevel === undefined || priceLevel === '') return '';
+      const level = Number(priceLevel);
+      if (!Number.isFinite(level) || level <0) return '';
+      return '$'.repeat(Math.max(1, Math.min(4,level)));
     }
 
     async function authFetch(path, options = {}) {
@@ -1613,6 +1627,8 @@
           carouselHtml = `<div class="carousel" data-place-id="${escapeHtml(p.place_id)}">Photo</div>`;
         }
 
+        console.log('PLACE PRICE DEBUG:', p.name, p.price_Level,p);
+
         card.innerHTML = `
           ${carouselHtml}
           <div class="cardBody">
@@ -1620,7 +1636,7 @@
             <div class="cardAddr">${escapeHtml(p.address || '')}</div>
             <div class="cardRow">
               ${p.rating ? `<span class="pill"><span class="starIcon"></span>${escapeHtml(String(p.rating))}</span>` : ``}
-              <span class="pill">Day ${tripState.activeDay}</span>
+              ${formatPriceEstimate(p.price_estimate) ? `<span class="pill">Price ${escapeHtml(formatPriceEstimate(p.price_estimate))}</span>` : ``}              <span class ="pill">Day ${tripState.activeDay}</span>
               <button class="addBtn" ${added ? 'disabled' : ''} data-place-id="${escapeHtml(p.place_id)}">
                 ${added ? '<span class="checkIcon"></span>Added' : 'Add to Trip'}
               </button>

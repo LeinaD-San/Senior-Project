@@ -629,7 +629,36 @@ async def places_search(q: str, lat: Optional[float] = None, lng: Optional[float
         })
 
     return {"query": q, "count": len(results), "results": results}
+
 '''
+def estimate_price_score(place: dict) -> int:
+    price_level = place.get('price_level')
+    if isinstance(price_level, int):
+        mapping = {
+            0:1,
+            1:3,
+            2:5,
+            3:7,
+            4:9,
+        }
+        return mapping.get(price_level, 5)
+    name = (place.get('name') or '').lower()
+    address = (place.get('formatted_address') or place.get('address') or '').lower()
+    text_blob = f'{name} {address}'
+
+    high_keywords = ["steakhouse", "fine dining", "luxury", "resort", "upscale", "wine bar"]
+    medium_keywords = ["restaurant", "brunch", "bistro", "shopping", "grill", "bar", "cafe"]
+    low_keywords = ["park", "museum", "trail", "coffee", "bookstore", "historic", "garden"]
+
+    if any(word in text_blob for word in high_keywords):
+        return 8
+    if any(word in text_blob for word in medium_keywords):
+        return 5
+    if any(word in text_blob for word in low_keywords):
+        return 3
+    return 5
+
+
 @app.get("/places/search")
 async def places_search(
     q: str = Query(min_length=1, max_length=120),
@@ -680,6 +709,8 @@ async def places_search(
             "name": p.get("name"),
             "address": p.get("formatted_address"),
             "rating": p.get("rating"),
+            "price_level": p.get('price_level'),
+            "price_estimate": estimate_price_score(p),
             "lat": location.get("lat"),
             "lng": location.get("lng"),
             "photo_url": photo_urls[0] if raw_photos else None,
@@ -745,6 +776,7 @@ async def place_details(place_id:str):
             'formatted_phone_number',
             'website',
             'rating',
+            'price_level',
             'opening_hours',
             'geometry',
             'photos',
@@ -778,6 +810,7 @@ async def place_details(place_id:str):
         "name": place.get("name"),
         "address": place.get("formatted_address"),
         "rating": place.get("rating"),
+        "price_level": place.get('price_level'),
         "phone": place.get("formatted_phone_number"),
         "website": place.get("website"),
         "lat": location.get("lat"),
