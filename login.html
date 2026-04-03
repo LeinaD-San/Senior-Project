@@ -10,7 +10,7 @@
       --ink:#0b1220;
       --muted:rgba(11,18,32,.65);
       --border:rgba(11,18,32,.12);
-      --card:rgba(255,255,255,.92);
+      --card:rgba(57, 1, 1, 0.92);
       --orange:#ff6a00;
       --orange2:#ff9a3d;
       --shadow:0 16px 40px rgba(11,18,32,.10);
@@ -94,6 +94,9 @@
       <button class="tab" id="tabRegister" type="button" onclick="setMode('register')">Create account</button>
     </div>
 
+    <label for="name" id="nameLabel" style="display:none;">Name</label>
+    <input id="name" type="text" placeholder="Your name" maxlength="120" style="display:none;"/>
+
     <label for="email">Email</label>
     <input id="email" type="email" placeholder="you@example.com" maxlength="320" />
 
@@ -124,6 +127,10 @@
       document.getElementById('tabLogin').classList.toggle('active', mode === 'login');
       document.getElementById('tabRegister').classList.toggle('active', mode === 'register');
       document.getElementById('error').textContent = '';
+
+      const showName = mode == 'register';
+      document.getElementById('nameLabel').style.display = showname ? 'block' : 'none';
+      document.getelementById('name').style.display = showName? 'block' : 'none';
     }
 
     function setToken(token) {
@@ -132,9 +139,16 @@
     }
 
     async function submitAuth() {
+      const name = document.getElementById('name').value.trim();
       const email = document.getElementById('email').value.trim();
       const password = document.getElementById('password').value;
       document.getElementById('error').textContent = '';
+
+      if (mode == 'register' && !name)
+      {
+        document.getElementById('error').textContent = 'Name is required.';
+        return;
+      }
 
       if (!email || !password) {
         document.getElementById('error').textContent = 'Email and password are required.';
@@ -143,7 +157,9 @@
 
       const path = mode === 'register' ? '/auth/register' : '/auth/login';
 
-      const payload = { email, password };
+      const payload = mode == 'register'
+      ? {name, email, password}
+      : {email, password};
 
       const res = await fetch(path, {
         method: 'POST',
@@ -158,6 +174,11 @@
       }
 
       setToken(data.token);
+
+      if(data.user) {
+        localStorage.setItem('tragent_user', JSON.stringify(data.user));
+      }
+      
       window.location.href = nextUrl();
     }
   </script>

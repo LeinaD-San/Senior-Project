@@ -12,6 +12,7 @@ class User(Base):
     __tablename__ = 'users'
 
     id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(120), nullable=True)#currently true so that rows do not break on startup
     email = Column(String, unique=True, nullable=False, index=True)
     password_salt = Column(String, nullable=False)
     password_hash = Column(String, nullable=False)

@@ -69,6 +69,11 @@ def on_startup():
         with engine.begin() as conn:
             conn.execute(text("ALTER TABLE trip_item ADD COLUMN IF NOT EXISTS arrival_time VARCHAR"))
             conn.execute(text("ALTER TABLE trip_item ADD COLUMN IF NOT EXISTS departure_time VARCHAR"))
+            
+            #temporarily commenting these out until the database issue is fixed where user is not being read
+            conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS name VARCHAR"))
+            conn.execute(text("UPDATE users SET name = 'Traveler' WHERE name IS NULL"))
+            
     except OperationalError: 
         print("ABORT ABORT, MAKE SURE YOU START WITH THE: docker compose up -d : OR ELSE THERE WILL BE ISSUES")
 
@@ -92,13 +97,18 @@ class TripUpdate(BaseModel):
     title: str = Field(min_length=1, max_length=200)
 
 
-class AuthPayload(BaseModel):
+class RegisterPayload(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
     email: str = Field(min_length=3, max_length=320)
     password: str = Field(min_length=8, max_length=200)
 
+class LoginPayload(BaseModel):
+    email: str = Field(min_length=3, max_length=320)
+    password: str = Field(min_length=8, max_length=200)
 
 class SessionResponse(BaseModel):
     token: str
+    user: dict
 
 class TripItemCreate(BaseModel):
     day: int = Field(ge=1, le=30)
@@ -121,10 +131,40 @@ class TripItemUpdate(BaseModel):
     arrival_time: Optional[str] = Field(default=None, max_length=5)
     departure_time: Optional[str] = Field(default=None, max_length=5)
 
+class TripProfile(BaseModel):
+    group_type: str = 'solo'
+    pace: str = 'balanced'
+    budget: str = 'medium'
+    place_style: str = 'mix'
+    food_focus: bool = True
+
 class ItineraryRequest(BaseModel):
     destination: str = Field(min_length=1, max_length=120)
     days: int = Field(ge=1, le=14)
     interests: List[str] = []
+    profile: Optional[TripProfile]=None
+
+
+#AI classes will give the backend a clean response format
+class AIStop(BaseModel):
+    place_id: str
+    name: str
+    address: str = ""
+    rating: Optional[float] = None
+    lat: Optional[float] = None
+    lng: Optional[float] = None
+    arrival_time: Optional[str] = None
+    departure_time: Optional[str] = None
+    suggestion_note: Optional[str] = None
+    
+class AIDay(BaseModel):
+    day: int
+    stops: List[AIStop]
+
+class AIItineraryResponse(BaseModel):
+    destination: str
+    days: int
+    itinerary: list[AIDay]
 
 class ReorderPayload(BaseModel):
     ordered_item_ids: List[int] = Field(min_length=1)
@@ -221,14 +261,19 @@ def get_current_user(
 
 
 @app.post("/auth/register", response_model=SessionResponse)
-def auth_register(payload: AuthPayload, db: db_dependency):
+def auth_register(payload: RegisterPayload, db: db_dependency):
     existing = db.query(models.User).filter(models.User.email == payload.email.lower()).first()
     if existing:
         raise HTTPException(status_code=400, detail="Email already registered")
 
     salt_b64 = _new_salt_b64()
     password_hash = _hash_password(payload.password, salt_b64)
-    user = models.User(email=payload.email.lower(), password_salt=salt_b64, password_hash=password_hash)
+    user = models.User(
+        name=payload.name.strip(),
+        email=payload.email.lower(), 
+        password_salt=salt_b64, 
+        password_hash=password_hash
+    )
     db.add(user)
     db.commit()
     db.refresh(user)
@@ -242,11 +287,17 @@ def auth_register(payload: AuthPayload, db: db_dependency):
     db.add(session)
     db.commit()
 
-    return {"token": token}
+    return {"token": token,
+            "user": {
+                "id": user.id,
+                "name": user.name,
+                "email": user.email,
+            },
+        }
 
 
 @app.post("/auth/login", response_model=SessionResponse)
-def auth_login(payload: AuthPayload, db: db_dependency):
+def auth_login(payload: LoginPayload, db: db_dependency):
     user = db.query(models.User).filter(models.User.email == payload.email.lower()).first()
     if not user:
         raise HTTPException(status_code=401, detail="Invalid email or password")
@@ -263,7 +314,13 @@ def auth_login(payload: AuthPayload, db: db_dependency):
     )
     db.add(session)
     db.commit()
-    return {"token": token}
+    return {"token": token,
+            "user": {
+                "id": user.id,
+                "name": user.name,
+                "email": user.email,
+            },
+        }
 
 
 @app.post("/auth/logout")
@@ -279,7 +336,7 @@ def auth_logout(db: db_dependency, authorization: str | None = Header(default=No
 
 @app.get("/me")
 def me(user: models.User = Depends(get_current_user)):
-    return {"id": user.id, "email": user.email}
+    return {"id": user.id, "name": user.name, "email": user.email}
 
 #DB--Trips
 @app.post("/trips")
@@ -572,7 +629,36 @@ async def places_search(q: str, lat: Optional[float] = None, lng: Optional[float
         })
 
     return {"query": q, "count": len(results), "results": results}
+
 '''
+def estimate_price_score(place: dict) -> int:
+    price_level = place.get('price_level')
+    if isinstance(price_level, int):
+        mapping = {
+            0:1,
+            1:3,
+            2:5,
+            3:7,
+            4:9,
+        }
+        return mapping.get(price_level, 5)
+    name = (place.get('name') or '').lower()
+    address = (place.get('formatted_address') or place.get('address') or '').lower()
+    text_blob = f'{name} {address}'
+
+    high_keywords = ["steakhouse", "fine dining", "luxury", "resort", "upscale", "wine bar"]
+    medium_keywords = ["restaurant", "brunch", "bistro", "shopping", "grill", "bar", "cafe"]
+    low_keywords = ["park", "museum", "trail", "coffee", "bookstore", "historic", "garden"]
+
+    if any(word in text_blob for word in high_keywords):
+        return 8
+    if any(word in text_blob for word in medium_keywords):
+        return 5
+    if any(word in text_blob for word in low_keywords):
+        return 3
+    return 5
+
+
 @app.get("/places/search")
 async def places_search(
     q: str = Query(min_length=1, max_length=120),
@@ -623,6 +709,8 @@ async def places_search(
             "name": p.get("name"),
             "address": p.get("formatted_address"),
             "rating": p.get("rating"),
+            "price_level": p.get('price_level'),
+            "price_estimate": estimate_price_score(p),
             "lat": location.get("lat"),
             "lng": location.get("lng"),
             "photo_url": photo_urls[0] if raw_photos else None,
@@ -688,6 +776,7 @@ async def place_details(place_id:str):
             'formatted_phone_number',
             'website',
             'rating',
+            'price_level',
             'opening_hours',
             'geometry',
             'photos',
@@ -721,6 +810,7 @@ async def place_details(place_id:str):
         "name": place.get("name"),
         "address": place.get("formatted_address"),
         "rating": place.get("rating"),
+        "price_level": place.get('price_level'),
         "phone": place.get("formatted_phone_number"),
         "website": place.get("website"),
         "lat": location.get("lat"),
@@ -798,167 +888,259 @@ async def geo_reverse(lat: float, lng: float):
     first = (data.get("results") or [{}])[0]
     return {"formatted_address": first.get("formatted_address")}
 
-#-------------------------------------------------------------------
-#-------------------------------------------------------------------
-#replaced the temporary helper function, rest of the AI route is not.
-def generate_ai_outline(destination: str, days: int, interests: List[str]):
-    if not os.getenv("OPENAI_API_KEY"):
-        raise HTTPException(status_code=500, detail = "OPENAI_API_KEY is not set")
-    
-    interests_text = ", ".join(interests) if interests else "general travel"
+#this is a helper that maps interests to search terms
+INTEREST_QUERY_MAP = {
+    "food": "restaurants",
+    "coffee": "coffee shops",
+    "parks": "parks",
+    "museums": "museums",
+    "nightlife": "bars nightlife",
+    "shopping": "shopping",
+    "outdoors": "outdoor attractions",
+    "history": "historic sites",
+}
 
-    try: 
-        response = openai_client.responses.create(
-            model= "gpt-5-mini",
-            input=[
-                {
-                    "role": "system",
-                    "content": (
-                        "You create short travel itinerary outlines for a trip planner."
-                        "Return realistic Google Places style search queries."
-                    ),
-                },
-                {
-                    "role": "user",
-                    "content": (
-                        f"Destination: {destination}\n"
-                        f"Days: {days}\n"
-                        f"Interests: {interests_text}\n\n"
-                        f"Create exactly {days} day objects. "
-                        "Each day must have a short theme and exactly 3 queries."
-                        "Each query must include the destination name."
-                    ),
-                },
-            ],
-            text ={
-                "format": {
-                    "type": "json_schema",
-                    "name": "itinerary_outline",
-                    "schema": AI_OUTLINE_SCHEMA,
-                    "strict": True,
-                }
-            },
-        )
+def build_interest_query(destination: str, interest: str, profile: Optional[TripProfile]) -> str:
+    search_term = INTEREST_QUERY_MAP.get(interest, interest)
+    profile = profile or TripProfile()
 
-        data = json.loads(response.output_text)
+    modifiers: list[str] = []
 
-        if len(data.get("days", [])) !=days:
-            raise HTTPException(status_code=502, detail="AI returned unexpected day count")
+    if profile.budget == 'low':
+        modifiers.append('affordable budget friendly')
+    elif profile.budget == 'high':
+        modifiers.append('upscale premium')
 
-        return data
+    if profile.place_style == 'hidden_gems':
+        modifiers.append('local hidden gems')
+    elif profile.place_style == 'tourist_spots':
+        modifiers.append('popular tourist spots')
 
-    except json.JSONDecodeError:
-        raise HTTPException(status_code=502, detail="AI returned invalid JSON")
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"OpenAI request failed: {str(e)}")
+    if profile.group_type == 'family':
+        modifiers.append('family friendly kid friendly')
+    elif profile.group_type == 'couple':
+        modifiers.append('romantic date night scenic')
+    elif profile.group_type == 'friends':
+        modifiers.append('group fun social lively')
+    elif profile.group_type == 'solo':
+        modifiers.append('solo friendly relaxed independent')
 
+    if profile.food_focus and interest in ('food', 'coffee'):
+        modifiers.append('popular local must try')
 
-#helper search to return places
-async def search_places_query(query: str) -> list[dict]:
+    modifier_text = ' '.join(m for m in modifiers if m).strip()
+    if modifier_text:
+        return f'{modifier_text} {search_term} in {destination}'
+    return f'{search_term} in {destination}'
+
+#will give us real place candidates from google. 
+async def search_places_for_interests(destination: str, interest:str, profile: Optional[TripProfile]=None) -> List[dict]:
     api_key = os.getenv("GOOGLE_MAPS_API_KEY")
     if not api_key:
-        raise HTTPException(status_code=500, detail='GOOGLE_MAPS_API_KEY is not set')
-    url = 'https://maps.googleapis.com/maps/api/place/textsearch/json'
-    params={'query': query, 'key':api_key}
+        raise HTTPException(status_code=500, detail="GOOGLE_MAPS_API_KEY is not set")
+
+    query = build_interest_query(destination, interest, profile)
+
+    url = "https://maps.googleapis.com/maps/api/place/textsearch/json"
+    params = {"query": query, "key": api_key}
 
     async with httpx.AsyncClient(timeout=15) as client:
         r = await client.get(url, params=params)
         r.raise_for_status()
         data = r.json()
-
-    status = data.get('status')
-    if status not in ("OK", 'ZERO_RESULTS'):
-        raise HTTPException(
-            status_code=502, detail={'google_status':status, 'error': data.get('error_message')},
-        )
     
+    status = data.get("status")
+    if status not in ("OK", "ZERO_RESULTS"):
+        raise HTTPException(
+            status_code=502,
+            detail={"google_status": status, "error": data.get("error_message")}
+        )
+
     results = []
-    for p in data.get('results', []):
-        location = p.get('geometry', {}).get ('location', {})
+    for p in data.get("results", [])[:12]:
+        location = p.get("geometry",{}).get("location", {})
         results.append({
-            'place_id':p.get('place_id'),
-            'name':p.get('name'),
-            'address':p.get('formatted_address'),
-            'rating':p.get('rating'),
-            'lat':location.get('lat'),
-            'lng':location.get('lng'),
+            "place_id": p.get("place_id"),
+            "name": p.get("name"),
+            "address": p.get("formatted_address"),
+            "rating": p.get("rating"),
+            "lat": location.get("lat"),
+            "lng": location.get("lng"),
         })
     return results
 
-#
-def dedupe_places(places: list[dict]) -> list[dict]:
+def dedupe_places(places: List[dict]) -> List[dict]:
     seen = set()
-    unique = []
+    deduped = []
 
-    for place in places:
-        place_id = place.get('place_id')
+    for p in places: 
+        place_id = p.get("place_id")
         if not place_id or place_id in seen:
             continue
         seen.add(place_id)
-        unique.append(place)
-    return unique
-
-@app.post("/ai/outline-test")
-def ai_outline_test(body: ItineraryRequest):
-    return generate_ai_outline(
-        destination=body.destination,
-        days=body.days,
-        interests = body.interests,
-    )
+        deduped.append(p)
+    return deduped
 
 
-#will not replace just yet once the outline is replaced, the route will automatically start using the improved version. 
-#temp replacement for /ai/ititnerary
-@app.post("/ai/itinerary")
+def score_place(place: dict, interest:str, profile: Optional[TripProfile]) -> float:
+    profile = profile or TripProfile()
+    score = 0.0
+
+    rating = place.get('rating')
+    if isinstance(rating, (int, float)):
+        score += float(rating) * 10
+
+    name = (place.get('name') or '').lower()
+    address = (place.get('address') or '').lower()
+    text_blob = f'{name} {address}'
+
+    if profile.place_style == 'hidden_gems':
+        if any(word in text_blob for word in ['local', 'coffee', 'cafe', 'market', 'garden', 'bookstore', 'neighborhood']):
+            score += 12
+        if any(word in text_blob for word in ['visitor center', 'airport', 'mall']):
+            score -= 8     
+    elif profile.place_style == 'tourist_spots':
+        if any(word in text_blob for word in ['museum', 'park', 'historic', 'landmark', 'tower', 'zoo', 'aquarium']):
+            score += 10
+
+    if profile.group_type == 'family':
+        if any(word in text_blob for word in ['park', 'zoo', 'museum', 'garden', 'family', 'aquarium']):
+            score += 12
+        if any(word in text_blob for word in ['bar', 'nightclub', 'lounge']):
+            score -= 20
+    
+    elif profile.group_type == 'couple':
+        if any(word in text_blob for word in ['scenic', 'garden', 'romantic', 'wine', 'view', 'bistro']):
+            score += 12
+
+    elif profile.group_type == 'friends':
+        if any(word in text_blob for word in ['bar', 'market', 'entertainment', 'social', 'brew', 'nightlife']):
+            score += 12
+
+    elif profile.group_type == 'solo':
+        if any(word in text_blob for word in ['museum', 'coffee', 'park', 'bookstore', 'walk', 'historic']):
+            score += 8
+
+    if profile.food_focus and interest in ('food', 'coffee'):
+        score += 12
+
+    if profile.budget == 'low':
+        if any(word in text_blob for word in ['cafe', 'park', 'market', 'trail', 'historic', 'coffee']):
+            score += 8
+        if any(word in text_blob for word in ['steakhouse', 'luxury', 'resort', 'fine dining']):
+            score -= 12
+
+    elif profile.budget == 'high':
+        if any(word in text_blob for word in ['steakhouse', 'fine dining', 'resort', 'upscale', 'grill']):
+            score += 10
+
+    return score
+    
+    
+    
+    if profile.group_type == "family" and ("park" in text_blob or "museum" in text_blob):
+        score += 4
+    if profile.group_type == "couple" and ("cafe" in text_blob or "scenic" in text_blob):
+        score += 5
+    if profile.group_type == "friends" and ("bar" in text_blob or "shopping" in text_blob):
+        score += 4
+    
+    return score
+
+def build_day_time_slots(profile: Optional[TripProfile] = None) -> list[tuple[str, str]]:
+    profile = profile or TripProfile()
+
+    if profile.pace == "relaxed":
+        return [
+            ("10:00", "11:30"),
+            ("13:00", "14:30"),
+            ("16:00", "18:00"),
+        ]
+    elif profile.pace == "fast":
+        return [
+            ("08:30", "10:00"),
+            ("10:30", "12:00"),
+            ("13:00", "14:30"),
+        ]
+    else:
+        return [
+            ("09:00", "10:30"),
+            ("12:00", "13:30"),
+            ("15:00", "17:00"),
+        ]
+
+def distribute_places_across_days(
+    places: List[dict], 
+    days: int, 
+    profile: Optional[TripProfile] = None,
+    max_stops_per_day: int = 3) -> List[dict]:
+    itinerary = [{"day": d, "stops": []} for d in range(1, days + 1)]
+    time_slots = build_day_time_slots(profile)
+
+    limited = places[: days * max_stops_per_day]
+
+    for idx, place in enumerate(limited):
+        day_index = idx % days
+        stop_index_for_day = len(itinerary[day_index]["stops"])
+        
+        arrival_time = None
+        departure_time = None
+        if stop_index_for_day < len(time_slots):
+            arrival_time, departure_time = time_slots[stop_index_for_day]
+
+        itinerary[day_index]["stops"].append({
+            "place_id": place.get("place_id"),
+            "name": place.get("name"),
+            "address": place.get("address") or "",
+            "rating": place.get("rating"),
+            "lat": place.get("lat"),
+            "lng":place.get("lng"),
+            "arrival_time": arrival_time,
+            "departure_time": departure_time,
+            "suggestion_note": "Suggested by AI. You can keep, replace, or edit this stop.",
+        })
+    return itinerary
+
+
+@app.post("/ai/itinerary", response_model=AIItineraryResponse)
 async def ai_itinerary(body: ItineraryRequest):
-    try:
-        outline = generate_ai_outline(
-            destination=body.destination,
-            days=body.days,
-            interests=body.interests,
-        )
+    interests = body.interests or ["food", "coffee", "parks"]
+    profile = body.profile or TripProfile()
 
-        itinerary_days = []
+    scored_places = []
+    for interest in interests:
+        results = await search_places_for_interests(body.destination, interest)
+        for place in results: 
+            place["_interest"] = interest
+            scored_places.append((score_place(place, interest, profile), place))
+    
+    #deduped = dedupe_places(all_places)
 
-        for day_info in outline.get("days", []):
-            queries = day_info.get("queries", [])
-            all_places = []
+    best_by_place_id: dict[str, tuple[float, dict]] = {}
+    for score, place in scored_places:
+        place_id = place.get('place_id')
+        if not place_id:
+            continue
+        place['_score'] = score
+        current = best_by_place_id.get(place_id)
+        if current is None or score > current[0]:
+            best_by_place_id[place_id] = (score, place)
+    ranked_places = [item[1] for item in sorted(best_by_place_id.values(), key=lambda x: x[0], reverse=True)]
 
-            for query in queries:
-                places = await search_places_query(query)
-                all_places.extend(places[:4])
+    max_stops_per_day = 3
+    if profile.pace =='relaxed':
+        max_stops_per_day = 2
+    elif profile.pace == 'packed':
+        max_stops_per_day = 4
+    itinerary = distribute_places_across_days(ranked_places, body.days, max_stops_per_day=max_stops_per_day)
+    
+    return {
+        "destination": body.destination,
+        "days": body.days,
+        "itinerary": itinerary,
+    }
 
-            unique_places = dedupe_places(all_places)[:5]
-
-            itinerary_days.append({
-                "day": day_info.get("day"),
-                "theme": day_info.get("theme"),
-                "queries": queries,
-                "places": unique_places,
-            })
-
-        return {
-            "destination": body.destination,
-            "days": body.days,
-            "interests": body.interests,
-            "itinerary": itinerary_days,
-            "note": "AI itinerary with real Google Places results",
-        }
-
-    except json.JSONDecodeError:
-        raise HTTPException(status_code=502, detail="AI returned invalid JSON")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-
-
-
-
-'''
-#temp. replacement for /ai/itinerary, below is the ORIGINAL DO NOT DELETE
+"""
 #AI assistant
 @app.post("/ai/itinerary")
 async def ai_itinerary(body: ItineraryRequest):
@@ -976,3 +1158,4 @@ async def ai_itinerary(body: ItineraryRequest):
         })
     return {"destination": body.destination, "days": body.days, "itinerary": itinerary, "note": "AI stub"}
 '''
+"""

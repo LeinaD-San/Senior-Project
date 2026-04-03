@@ -547,6 +547,9 @@
           <div id="qCounter" style="margin-top:0;font-size:10px;line-height:1.1;color:rgba(11,18,32,.55);" aria-live="polite"></div>
 
         </div>
+        <div class="searchCard" id="plannerProfileSummary" style="color:var(--muted); font-size:13px; line-height:1.5;">
+          No personalization loaded yet.
+          </div>
 
         <div class="results" id="results"></div>
       </div>
@@ -902,6 +905,20 @@
       });
     }
 
+    function renderPlannerProfileSummary() {
+      const el = document.getElementById('plannerProfileSummary');
+      if (!el) return;
+
+      el.innerHTML= `
+          <strong style="color:var(--ink);">Traveler profile:</strong><br>
+          Group: ${personalizationProfile.group_type}<br>
+          Pace: ${personalizationProfile.pace}<br>
+          Budget: ${personalizationProfile.budget}<br>
+          Place style: ${personalizationProfile.place_style}<br>
+          Food focus: ${personalizationProfile.food_focus ? 'Yes' : 'No'}
+        `;
+      }
+
     // details modal
     async function openDetails(placeId) {
       const modal = document.getElementById("detailsModal");
@@ -940,6 +957,7 @@
             ${data.website ? `<div><b>Website:</b> <a href="${data.website}" target="_blank" rel="noreferrer">${escapeHtml(data.website)}</a></div>` : ""}
             ${typeof data.open_now === "boolean" ? `<div><b>Open now:</b> ${data.open_now ? "Yes" : "No"}</div>` : ""}
             ${data.rating ? `<div><b>Rating:</b> <span class="starIcon"></span>${escapeHtml(String(data.rating))}</div>` : ""}
+            ${formatPriceLevel(data.price_Level) ? '<div><b>Price:</b> ${escapeHtml(formatPriceLevel(data.price_level))}</div>': ""}
           </div>
           ${photosHtml}
           ${hoursHtml}
@@ -1047,6 +1065,19 @@
       document.getElementById('savedTripsCard').style.display = signedIn ? '' : 'none';
     }
 
+    function formatPriceEstimate(score){
+      const value = Number(score);
+      if (!Number.isFinite(value) || value < 1) return '';
+        return `${Math.min(10, Math.max(1, Math.round(value)))}/10`;
+      }
+
+    function formatPriceLevel(priceLevel){
+      if (priceLevel === null || priceLevel === undefined || priceLevel === '') return '';
+      const level = Number(priceLevel);
+      if (!Number.isFinite(level) || level <0) return '';
+      return '$'.repeat(Math.max(1, Math.min(4,level)));
+    }
+
     async function authFetch(path, options = {}) {
       const token = getToken();
       const headers = { ...(options.headers || {}) };
@@ -1065,6 +1096,14 @@
         await fetch('/auth/logout', { method: 'POST', headers: { Authorization: `Bearer ${token}` } }).catch(() => {});
       }
     }
+
+    let personalizationProfile = {
+      group_type: 'solo',
+      pace: 'balanced',
+      budget: 'medium',
+      place_style: 'mix',
+      food_focus: true,
+    };
 
     // trip state
     const tripState = {
@@ -1588,6 +1627,8 @@
           carouselHtml = `<div class="carousel" data-place-id="${escapeHtml(p.place_id)}">Photo</div>`;
         }
 
+        console.log('PLACE PRICE DEBUG:', p.name, p.price_Level,p);
+
         card.innerHTML = `
           ${carouselHtml}
           <div class="cardBody">
@@ -1595,7 +1636,7 @@
             <div class="cardAddr">${escapeHtml(p.address || '')}</div>
             <div class="cardRow">
               ${p.rating ? `<span class="pill"><span class="starIcon"></span>${escapeHtml(String(p.rating))}</span>` : ``}
-              <span class="pill">Day ${tripState.activeDay}</span>
+              ${formatPriceEstimate(p.price_estimate) ? `<span class="pill">Price ${escapeHtml(formatPriceEstimate(p.price_estimate))}</span>` : ``}              <span class ="pill">Day ${tripState.activeDay}</span>
               <button class="addBtn" ${added ? 'disabled' : ''} data-place-id="${escapeHtml(p.place_id)}">
                 ${added ? '<span class="checkIcon"></span>Added' : 'Add to Trip'}
               </button>
@@ -1713,10 +1754,12 @@
   const data = await res.json();
   renderResults(data.results || []);
 }
-  
+
+
   async function runAiGenerate() {
-  const destination = (document.getElementById('destinationInput').value || tripState.destination || '').trim().slice(0,120);
+  const destination = (document.getElementById('destinationInput').value || tripState.destination || '').trim().slice(0, 120);
   document.getElementById('destinationInput').value = destination;
+
   if (!destination) {
     uiNotify('Missing destination', 'Enter a destination first.');
     return;
@@ -1737,10 +1780,11 @@
         destination: destination,
         days: tripState.days,
         interests: interests,
+        profile: personalizationProfile
       }),
     });
 
-    const data = await res.json();
+    const data = await res.json().catch(() => ({}));
 
     if (!res.ok) {
       throw new Error(data.detail || 'AI itinerary request failed');
@@ -1751,38 +1795,44 @@
       nextItemsByDay[d] = [];
     }
 
-    for (const dayInfo of (data.itinerary || [])) {
+    const returnedDays = data.itinerary || [];
+    returnedDays.forEach((dayInfo) => {
       const day = dayInfo.day;
       if (!nextItemsByDay[day]) nextItemsByDay[day] = [];
 
-      const places = dayInfo.places || [];
+      const places = dayInfo.stops || dayInfo.places || [];
       nextItemsByDay[day] = places.map((place, idx) => ({
         place_id: place.place_id,
         name: place.name,
-        address: place.address,
-        rating: place.rating,
-        lat: place.lat,
-        lng: place.lng,
+        address: place.address || '',
+        rating: place.rating || null,
+        lat: place.lat || null,
+        lng: place.lng || null,
         notes: '',
         completed: false,
         position: idx + 1,
+        arrival_time: null,
+        departure_time: null,
       }));
-    }
+    });
 
     tripState.destination = destination;
     tripState.itemsByDay = nextItemsByDay;
     tripState.activeDay = 1;
 
+    initDays();
     renderDays();
     renderItinerary();
-    renderResults(lastResults);
+
+    console.log('FULL AI RESPONSE:', data);
+    console.log('ITINERARY FIELD:', data.itinerary);
 
     uiNotify('AI itinerary', 'AI itinerary generated!');
   } catch (err) {
     uiNotify('AI auto-generate failed', String(err.message || err));
+    console.error(err);
   }
 }
-
 
 
 
@@ -1983,11 +2033,40 @@ function setupDestinationAutocomplete() {
     }
 
     //  init from URL params 
+
+    function renderPlannerProfileSummary() {
+      const el = document.getElementById('plannerProfileSummary');
+      if (!el) return;
+
+      el.innerHTML =  `
+        <strong style="color:var(--ink);">Traveler profile:</strong><br>
+        Group: ${personalizationProfile.group_type}<br>
+        Pace: ${personalizationProfile.pace}<br>
+        Budget: ${personalizationProfile.budget}<br>
+        Place style: ${personalizationProfile.place_style}<br>
+        Food focus: ${personalizationProfile.food_focus ? 'Yes' : 'No'}
+      `;
+    }
     const params = new URLSearchParams(window.location.search);
-const qParam = params.get('q');
-const destParam = params.get('dest');
-const daysParam = parseInt(params.get('days'));
-const interestsParam = params.get('interests');
+    const qParam = params.get('q');
+    const destParam = params.get('dest');
+    const daysParam = parseInt(params.get('days'));
+    const interestsParam = params.get('interests');
+
+    const groupTypeParam = params.get('group_type');
+    const paceParam= params.get('pace');
+    const budgetParam= params.get('budget');
+    const placeStyleParam = params.get('place_style');
+    const foodFocusParam = params.get('food_focus');
+
+
+    if (groupTypeParam) personalizationProfile.group_type = groupTypeParam;
+    if (paceParam) personalizationProfile.pace = paceParam;
+    if (budgetParam) personalizationProfile.budget = budgetParam;
+    if (placeStyleParam) personalizationProfile.place_style = placeStyleParam;
+    if (foodFocusParam !== null) personalizationProfile.food_focus = (foodFocusParam === 'true');
+
+
 
 if (daysParam && daysParam >= 1 && daysParam <= 7) {
   tripState.days = daysParam;
@@ -2007,6 +2086,7 @@ setTripTitle(tripState.destination ? `Trip to ${tripState.destination}` : 'Trip'
 initDays();
 renderItinerary();
 renderResults([]);
+renderPlannerProfileSummary();
 setupCharLeftCounters();
 setupDestinationAutocomplete();
 
