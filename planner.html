@@ -1811,8 +1811,8 @@
         notes: '',
         completed: false,
         position: idx + 1,
-        arrival_time: null,
-        departure_time: null,
+        arrival_time: place.arrival_time || null,
+        departure_time: place.departure_time || null,
       }));
     });
 

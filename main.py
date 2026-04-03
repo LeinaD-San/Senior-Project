@@ -1056,11 +1056,12 @@ def build_day_time_slots(profile: Optional[TripProfile] = None) -> list[tuple[st
             ("13:00", "14:30"),
             ("16:00", "18:00"),
         ]
-    elif profile.pace == "fast":
+    elif profile.pace == "packed":
         return [
             ("08:30", "10:00"),
             ("10:30", "12:00"),
             ("13:00", "14:30"),
+            ("15:00", "16:30"),
         ]
     else:
         return [
@@ -1068,6 +1069,260 @@ def build_day_time_slots(profile: Optional[TripProfile] = None) -> list[tuple[st
             ("12:00", "13:30"),
             ("15:00", "17:00"),
         ]
+
+
+def get_slot_interest_preferences(profile: Optional[TripProfile], max_stops_per_day: int) -> list[list[str]]:
+    profile = profile or TripProfile()
+
+    if profile.group_type == "family":
+        evening = ["food", "parks", "museums"]
+    elif profile.group_type == "couple":
+        evening = ["food", "nightlife", "shopping"]
+    else:
+        evening = ["food","nightlife"]
+
+
+    if max_stops_per_day <= 2:
+        return [
+            ["coffee"]
+            ["museums", "parks", "shopping", "history", "food"],
+        ]
+
+    if max_stops_per_day >= 4:
+        return [
+            ["coffee"],
+            ["museums", "history", "parks"],
+            ["shopping", "parks", "museums"],
+        ]
+
+    return [
+        ["coffee"],
+        ["museums", "history", "parks", "shopping"],
+        evening,
+    ]
+
+
+def build_balanced_itinerary(
+    grouped_places: dict[str, List[dict]],
+    days: int,
+    profile: Optional[TripProfile] = None,
+    max_stops_per_day: int = 3,
+) -> List[dict]:
+    profile = profile or TripProfile()
+    itinerary = [{"day": d, "stops": []} for d in range(1, days + 1)]
+    time_slots = build_day_time_slots(profile)
+    slot_preferences = get_slot_interest_preferences(profile, max_stops_per_day)
+
+    pools = {}
+    for interest, places in grouped_places.items():
+        pools[interest] = list(places)
+
+    used_place_ids: set[str] = set()
+
+    def pop_from_interest(interest: str):
+        pool = pools.get(interest, [])
+        while pool:
+            place = pool.pop(0)
+            pid = place.get("place_id")
+            if pid and pid not in used_place_ids:
+                used_place_ids.add(pid)
+                return place
+        return None
+
+    def pop_best_fallback(excluded_interests: set[str]):
+        candidates = []
+
+        for interest, pool in pools.items():
+            if interest in excluded_interests:
+                continue
+            while pool and pool[0].get("place_id") in used_place_ids:
+                pool.pop(0)
+            if pool:
+                candidates.append((pool[0].get("_score", 0), interest))
+
+        if not candidates:
+            for interest, pool in pools.items():
+                while pool and pool[0].get("place_id") in used_place_ids:
+                    pool.pop(0)
+                if pool:
+                    candidates.append((pool[0].get("_score", 0), interest))
+
+        if not candidates:
+            return None
+
+        candidates.sort(reverse=True)
+        _, best_interest = candidates[0]
+        return pop_from_interest(best_interest)
+
+    for day_index in range(days):
+        used_interests_today: set[str] = set()
+
+        for slot_index in range(max_stops_per_day):
+            chosen = None
+            preferred = slot_preferences[min(slot_index, len(slot_preferences) - 1)]
+
+            for interest in preferred:
+                if interest in used_interests_today:
+                    continue
+                chosen = pop_from_interest(interest)
+                if chosen:
+                    used_interests_today.add(interest)
+                    break
+
+            if not chosen:
+                chosen = pop_best_fallback(used_interests_today)
+
+            if not chosen:
+                continue
+
+            arrival_time = None
+            departure_time = None
+            if slot_index < len(time_slots):
+                arrival_time, departure_time = time_slots[slot_index]
+
+            itinerary[day_index]["stops"].append({
+                "place_id": chosen.get("place_id"),
+                "name": chosen.get("name"),
+                "address": chosen.get("address") or "",
+                "rating": chosen.get("rating"),
+                "lat": chosen.get("lat"),
+                "lng": chosen.get("lng"),
+                "arrival_time": arrival_time,
+                "departure_time": departure_time,
+                "suggestion_note": f"Suggested from {chosen.get('_interest', 'mixed')} results.",
+            })
+
+    return itinerary
+
+
+def get_day_slot_preferences(profile: Optional[TripProfile] = None, slot_count: int = 3) -> list[list[str]]:
+    profile = profile or TripProfile()
+
+    if slot_count <= 2:
+        return [
+            ["coffee", "food"],
+            ["museums", "parks", "shopping", "history", "food"],
+        ]
+
+    if slot_count >= 4:
+        evening = ["nightlife", "food", "shopping"]
+        if profile.group_type == "family":
+            evening = ["food", "parks", "museums"]
+        return [
+            ["coffee", "food"],
+            ["museums", "history", "parks"],
+            ["shopping", "parks", "museums", "food"],
+            evening,
+        ]
+
+    # balanced = 3 stops
+    evening = ["nightlife", "food", "shopping"]
+    if profile.group_type == "family":
+        evening = ["food", "parks", "museums"]
+
+    return [
+        ["coffee", "food"],
+        ["museums", "history", "parks", "shopping"],
+        evening,
+    ]
+
+
+def build_balanced_itinerary(
+    grouped_places: dict[str, List[dict]],
+    days: int,
+    profile: Optional[TripProfile] = None,
+    max_stops_per_day: int = 3,
+) -> List[dict]:
+    profile = profile or TripProfile()
+    itinerary = [{"day": d, "stops": []} for d in range(1, days + 1)]
+    time_slots = build_day_time_slots(profile)
+    slot_preferences = get_day_slot_preferences(profile, max_stops_per_day)
+
+    # copy lists so we can pop from them
+    pools: dict[str, List[dict]] = {
+        interest: list(places)
+        for interest, places in grouped_places.items()
+    }
+
+    used_place_ids: set[str] = set()
+
+    def pop_next_from_interest(interest: str) -> Optional[dict]:
+        pool = pools.get(interest, [])
+        while pool:
+            place = pool.pop(0)
+            pid = place.get("place_id")
+            if pid and pid not in used_place_ids:
+                used_place_ids.add(pid)
+                return place
+        return None
+
+    def pop_next_any(exclude_interests: set[str]) -> Optional[dict]:
+        ranked_candidates = []
+        for interest, pool in pools.items():
+            if interest in exclude_interests:
+                continue
+            while pool and pool[0].get("place_id") in used_place_ids:
+                pool.pop(0)
+            if pool:
+                ranked_candidates.append((pool[0].get("_score", 0), interest))
+
+        if not ranked_candidates:
+            for interest, pool in pools.items():
+                while pool and pool[0].get("place_id") in used_place_ids:
+                    pool.pop(0)
+                if pool:
+                    ranked_candidates.append((pool[0].get("_score", 0), interest))
+
+        if not ranked_candidates:
+            return None
+
+        ranked_candidates.sort(reverse=True)
+        _, best_interest = ranked_candidates[0]
+        return pop_next_from_interest(best_interest)
+
+    for day_index in range(days):
+        used_interests_today: set[str] = set()
+
+        for slot_index in range(max_stops_per_day):
+            chosen = None
+            preferred_interests = slot_preferences[min(slot_index, len(slot_preferences) - 1)]
+
+            for interest in preferred_interests:
+                if interest in used_interests_today:
+                    continue
+                chosen = pop_next_from_interest(interest)
+                if chosen:
+                    chosen["_interest"] = chosen.get("_interest") or interest
+                    used_interests_today.add(interest)
+                    break
+
+            if not chosen:
+                chosen = pop_next_any(used_interests_today)
+
+            if not chosen:
+                continue
+
+            arrival_time = None
+            departure_time = None
+            if slot_index < len(time_slots):
+                arrival_time, departure_time = time_slots[slot_index]
+
+            itinerary[day_index]["stops"].append({
+                "place_id": chosen.get("place_id"),
+                "name": chosen.get("name"),
+                "address": chosen.get("address") or "",
+                "rating": chosen.get("rating"),
+                "lat": chosen.get("lat"),
+                "lng": chosen.get("lng"),
+                "arrival_time": arrival_time,
+                "departure_time": departure_time,
+                "suggestion_note": f"Suggested from {chosen.get('_interest', 'mixed')} results.",
+            })
+
+    return itinerary
+
+
+
 
 def distribute_places_across_days(
     places: List[dict], 
@@ -1107,32 +1362,41 @@ async def ai_itinerary(body: ItineraryRequest):
     interests = body.interests or ["food", "coffee", "parks"]
     profile = body.profile or TripProfile()
 
-    scored_places = []
+    grouped_places: dict[str, List[dict]] = {}
+
     for interest in interests:
-        results = await search_places_for_interests(body.destination, interest)
+        results = await search_places_for_interests(body.destination, interest, profile)
+        scored = []
         for place in results: 
             place["_interest"] = interest
-            scored_places.append((score_place(place, interest, profile), place))
+            place["_score"] = score_place(place, interest, profile)
+            scored.append(place)
     
     #deduped = dedupe_places(all_places)
 
-    best_by_place_id: dict[str, tuple[float, dict]] = {}
-    for score, place in scored_places:
-        place_id = place.get('place_id')
-        if not place_id:
-            continue
-        place['_score'] = score
-        current = best_by_place_id.get(place_id)
-        if current is None or score > current[0]:
-            best_by_place_id[place_id] = (score, place)
-    ranked_places = [item[1] for item in sorted(best_by_place_id.values(), key=lambda x: x[0], reverse=True)]
+        seen = set()
+        ranked = []
+        for place in sorted(scored, key=lambda p: p["_score"], reverse=True):
+            pid = place.get("place_id")
+            if not pid or pid in seen:
+                continue
+            seen.add(pid)
+            ranked.append(place)
+
+        grouped_places[interest] = ranked
 
     max_stops_per_day = 3
     if profile.pace =='relaxed':
         max_stops_per_day = 2
     elif profile.pace == 'packed':
         max_stops_per_day = 4
-    itinerary = distribute_places_across_days(ranked_places, body.days, max_stops_per_day=max_stops_per_day)
+        
+    itinerary = build_balanced_itinerary(
+        grouped_places=grouped_places,
+        days=body.days,
+        profile=profile,
+        max_stops_per_day=max_stops_per_day,
+    )
     
     return {
         "destination": body.destination,
