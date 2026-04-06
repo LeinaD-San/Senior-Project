@@ -588,7 +588,7 @@ def planner_page():
 #account
 @app.get("/account")
 def account_page():
-    return FileResponse("account.html", media_type="text/html")   
+    return FileResponse(BASE_DIR / "account.html", media_type="text/html")   
 
 
 #Google Maps
