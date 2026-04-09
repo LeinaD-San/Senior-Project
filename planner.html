@@ -59,6 +59,17 @@
     .savedBtn{border:1px solid var(--border);background:white;border-radius:12px;padding:8px 10px;font-weight:900;cursor:pointer}
     .savedBtn:hover{background:rgba(11,18,32,.04)}
     .danger{color:#b91c1c}
+
+    .accountBtn{
+      width:100%;
+      border:none;
+      padding:12px 14px;
+      border-radius:14px;
+      font-weight:900;
+      cursor:pointer;
+      background:rgba(11,18,32,.08);
+    }
+    .accountBtn:hover{background:rgba(11,18,32,.11)}
     .wrap{
       max-width:1200px;margin:0 auto;padding:0 16px 28px;
     }
@@ -473,9 +484,9 @@
 
       <!-- RIGHT: Search + results -->
       <div>
-        <div class="savedCard" id="savedTripsCard" style="display:none">
-          <div class="savedTitle">My Saved Trips</div>
-          <div class="savedList" id="savedTripsList"></div>
+        <div class="savedCard" id="accountCard" style="display:none">
+          <div class="savedTitle">Account</div>
+          <button class="accountBtn" id="accountBtn" type="button" onclick="goToAccount()">My Trips</button>
         </div>
         
 
@@ -583,6 +594,10 @@
 
   <script>
     const API_BASE = '';
+
+    function goToAccount() {
+      window.location.href = `/account?next=${encodeURIComponent(currentNextUrl())}`;
+    }
 
     function openUiModal({ title, message, actions }) {
       const modal = document.getElementById('uiModal');
@@ -703,7 +718,7 @@
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({ title: next }),
                 }).catch(() => {});
-                await loadSavedTrips().catch(() => {});
+                await loadAccountUi().catch(() => {});
               }
             }
           },
@@ -1062,7 +1077,7 @@
     function setSignedInUi(signedIn) {
       document.getElementById('signInLink').style.display = signedIn ? 'none' : '';
       document.getElementById('logoutBtn').style.display = signedIn ? '' : 'none';
-      document.getElementById('savedTripsCard').style.display = signedIn ? '' : 'none';
+      document.getElementById('accountCard').style.display = signedIn ? '' : 'none';
     }
 
     function formatPriceEstimate(score){
@@ -1130,83 +1145,39 @@
       renderResults(lastResults);
     }
 
-    async function loadSavedTrips() {
+    async function loadTripById(tripId) {
+      const trip = await authFetch(`/trips/${tripId}`);
+      const maxDay = Math.max(1, ...(trip.items || []).map((i) => i.day || 1));
+      tripState.destination = trip.destination || '';
+      setTripTitle(trip.title || (tripState.destination ? `Trip to ${tripState.destination}` : 'Trip'));
+      document.getElementById('destinationInput').value = tripState.destination;
+      setupCharLeftCounters();
+      tripState.activeDay = 1;
+      tripState.currentTripId = trip.id;
+      tripState.itemsByDay = {};
+      for (let d = 1; d <= maxDay; d++) tripState.itemsByDay[d] = [];
+      (trip.items || []).forEach((i) => {
+        if (!tripState.itemsByDay[i.day]) tripState.itemsByDay[i.day] = [];
+        tripState.itemsByDay[i.day].push({
+          id: i.id,
+          position: i.position,
+          place_id: i.place_id,
+          name: i.name,
+          address: i.address,
+          rating: i.rating,
+          lat: i.lat,
+          lng: i.lng,
+          notes: i.notes,
+          completed: i.completed,
+        });
+      });
+      resetDays(maxDay);
+    }
+
+    async function loadAccountUi() {
       const token = getToken();
       if (!token) return;
       setSignedInUi(true);
-
-      const trips = await authFetch('/trips');
-      const list = document.getElementById('savedTripsList');
-      list.innerHTML = '';
-
-      if (!trips.length) {
-        list.innerHTML = '<div class="hint">No saved trips yet.</div>';
-        return;
-      }
-
-      trips.forEach((t) => {
-        const row = document.createElement('div');
-        row.className = 'savedItem';
-        row.innerHTML = `
-          <div class="savedMeta">
-            <div class="savedName">${escapeHtml(t.title)}</div>
-            <div class="savedSub">${escapeHtml(t.destination)}</div>
-          </div>
-          <button class="savedBtn" type="button">Open</button>
-          <button class="savedBtn danger" type="button">Delete</button>
-        `;
-
-        const buttons = row.querySelectorAll('button');
-        const openBtn = buttons[0];
-        const deleteBtn = buttons[1];
-
-        openBtn.addEventListener('click', async () => {
-          const trip = await authFetch(`/trips/${t.id}`);
-          const maxDay = Math.max(1, ...(trip.items || []).map((i) => i.day || 1));
-          tripState.destination = trip.destination || '';
-          setTripTitle(trip.title || (tripState.destination ? `Trip to ${tripState.destination}` : 'Trip'));
-          document.getElementById('destinationInput').value = tripState.destination;
-          setupCharLeftCounters();
-          tripState.activeDay = 1;
-          tripState.currentTripId = trip.id;
-          tripState.itemsByDay = {};
-          for (let d = 1; d <= maxDay; d++) tripState.itemsByDay[d] = [];
-          (trip.items || []).forEach((i) => {
-            if (!tripState.itemsByDay[i.day]) tripState.itemsByDay[i.day] = [];
-            tripState.itemsByDay[i.day].push({
-              id: i.id,
-              position: i.position,
-              place_id: i.place_id,
-              name: i.name,
-              address: i.address,
-              rating: i.rating,
-              lat: i.lat,
-              lng: i.lng,
-              notes: i.notes,
-              completed: i.completed,
-            });
-          });
-          resetDays(maxDay);
-        });
-
-        deleteBtn.addEventListener('click', async () => {
-          openUiModal({
-            title: 'Delete saved trip?',
-            message: `Delete “${escapeHtml(t.title || 'Trip')}”? This cannot be undone.`,
-            actions: [
-              { label: 'Cancel', onClick: () => closeUiModal() },
-              { label: 'Delete', variant: 'primary', onClick: async () => {
-                  closeUiModal();
-                  await authFetch(`/trips/${t.id}`, { method: 'DELETE' }).catch(() => {});
-                  await loadSavedTrips().catch(() => {});
-                }
-              },
-            ],
-          });
-        });
-
-        list.appendChild(row);
-      });
     }
 
 
@@ -1966,7 +1937,7 @@
       }
 
       uiNotify('Saved', 'Trip saved!');
-      await loadSavedTrips();
+      await loadAccountUi();
 
       clearPendingTripDraft();
 
@@ -2178,7 +2149,15 @@ if (destParam && interestsParam) {
 updateSignInLink();
 setSignedInUi(!!getToken());
 if (getToken()) {
-  loadSavedTrips().catch(() => {});
+  loadAccountUi().catch(() => {});
+}
+
+const tripIdParam = params.get('trip_id');
+if (getToken() && tripIdParam) {
+  const tripId = Number(tripIdParam);
+  if (Number.isFinite(tripId) && tripId > 0) {
+    loadTripById(tripId).catch(() => {});
+  }
 }
 
 

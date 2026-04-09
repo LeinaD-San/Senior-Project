@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>trAgent — Account</title>
+  <style>
+    :root{
+      --bg:#ffffff;
+      --ink:#0b1220;
+      --muted:rgba(11,18,32,.65);
+      --border:rgba(11,18,32,.12);
+      --card:rgba(255,255,255,.92);
+      --orange:#ff6a00;
+      --orange2:#ff9a3d;
+      --shadow:0 16px 40px rgba(11,18,32,.10);
+      --radius:16px;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      font-family: system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;
+      color:var(--ink);
+      background:
+        radial-gradient(900px 560px at 14% 6%, rgba(255,154,61,.16), transparent 62%),
+        radial-gradient(800px 520px at 88% 12%, rgba(255,106,0,.10), transparent 64%),
+        radial-gradient(900px 600px at 50% 110%, rgba(255,183,3,.10), transparent 62%),
+        var(--bg);
+      min-height:100vh;
+      padding:18px;
+    }
+    header{
+      display:flex;align-items:center;justify-content:space-between;
+      padding:10px 6px 18px;
+      max-width:1100px;margin:0 auto;
+    }
+    .brand{display:flex;gap:10px;align-items:center;font-weight:900;letter-spacing:-.02em}
+    .brandDot{
+      width:34px;height:34px;border-radius:12px;
+      background:linear-gradient(135deg,var(--orange),var(--orange2));
+      box-shadow:0 18px 50px rgba(255,106,0,.25);
+    }
+    .topActions a{color:var(--muted);text-decoration:none;font-weight:800}
+    .topActions a:hover{color:var(--ink)}
+    .topActions button{border:none;background:transparent;color:var(--muted);font-weight:900;cursor:pointer}
+    .topActions button:hover{color:var(--ink)}
+
+    .wrap{max-width:1100px;margin:0 auto;}
+    .grid{display:grid;grid-template-columns: 360px 1fr;gap:16px;align-items:start;}
+    @media (max-width: 980px){.grid{grid-template-columns:1fr}}
+
+    .card{
+      background:var(--card);
+      border:1px solid var(--border);
+      border-radius:var(--radius);
+      box-shadow:var(--shadow);
+      padding:14px;
+    }
+    .title{font-weight:900;font-size:15px}
+    .sub{margin-top:6px;color:var(--muted);font-size:13px;line-height:1.45}
+
+    .pill{
+      display:inline-flex;align-items:center;gap:8px;
+      padding:8px 10px;
+      border-radius:999px;
+      border:1px solid var(--border);
+      background:white;
+      font-weight:800;
+      font-size:12px;
+      color:rgba(11,18,32,.8);
+    }
+
+    .primary{
+      width:100%;
+      border:none;
+      padding:12px 14px;
+      border-radius:14px;
+      font-weight:900;
+      color:white;
+      background:linear-gradient(135deg,var(--orange),var(--orange2));
+      cursor:pointer;
+      box-shadow:0 18px 50px rgba(255,106,0,.20);
+    }
+    .secondary{
+      width:100%;
+      border:none;
+      padding:12px 14px;
+      border-radius:14px;
+      font-weight:900;
+      cursor:pointer;
+      background:rgba(11,18,32,.08);
+    }
+    .secondary:hover{background:rgba(11,18,32,.11)}
+
+    .list{margin-top:12px;display:flex;flex-direction:column;gap:10px}
+    .row{display:flex;align-items:center;gap:10px;padding:10px 10px;border-radius:14px;border:1px solid var(--border);background:white}
+    .meta{flex:1;min-width:0}
+    .name{font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .desc{margin-top:2px;color:var(--muted);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .btn{border:1px solid var(--border);background:white;border-radius:12px;padding:8px 10px;font-weight:900;cursor:pointer}
+    .btn:hover{background:rgba(11,18,32,.04)}
+    .danger{color:#b91c1c}
+
+    .empty{color:var(--muted);border:1px dashed var(--border);border-radius:12px;padding:12px;font-size:13px}
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <div class="brandDot" aria-hidden="true"></div>
+      <div>trAgent Account</div>
+    </div>
+    <div class="topActions">
+      <a id="backLink" href="/planner">Back to planner</a>
+      <span style="padding:0 8px;color:rgba(11,18,32,.35)">|</span>
+      <a id="signInLink" href="/login">Sign in</a>
+      <button id="logoutBtn" type="button" onclick="logout()" style="display:none">Log out</button>
+    </div>
+  </header>
+
+  <div class="wrap">
+    <div class="grid">
+      <div class="card">
+        <div class="title">Profile</div>
+        <div class="sub" id="profileSub">Sign in to see your profile.</div>
+        <div style="margin-top:12px;display:flex;flex-wrap:wrap;gap:8px" id="profilePills"></div>
+        <div style="margin-top:12px;display:flex;gap:10px">
+          <button class="secondary" type="button" onclick="goPlanner()">Planner</button>
+          <button class="primary" type="button" onclick="goCreateTrip()">New Trip</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="title">Saved Trips</div>
+        <div class="sub">Open a trip to keep planning, or delete old ones.</div>
+        <div class="list" id="tripsList"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function qs(key) {
+      const url = new URL(window.location.href);
+      return url.searchParams.get(key);
+    }
+
+    function nextUrl() {
+      return qs('next') || '/planner';
+    }
+
+    document.getElementById('backLink').href = nextUrl();
+
+    function getToken() {
+      return localStorage.getItem('tragent_token') || '';
+    }
+
+    function setSignedInUi(signedIn) {
+      document.getElementById('signInLink').style.display = signedIn ? 'none' : '';
+      document.getElementById('logoutBtn').style.display = signedIn ? '' : 'none';
+      if (!signedIn) {
+        document.getElementById('signInLink').href = `/login?next=${encodeURIComponent(window.location.pathname + window.location.search)}`;
+      }
+    }
+
+    async function authFetch(path, options = {}) {
+      const token = getToken();
+      const headers = { ...(options.headers || {}) };
+      if (token) headers.Authorization = `Bearer ${token}`;
+      const res = await fetch(path, { ...options, headers });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.detail || `Request failed: ${res.status}`);
+      return data;
+    }
+
+    async function logout() {
+      const token = getToken();
+      localStorage.removeItem('tragent_token');
+      setSignedInUi(false);
+      if (token) {
+        await fetch('/auth/logout', { method: 'POST', headers: { Authorization: `Bearer ${token}` } }).catch(() => {});
+      }
+      renderSignedOut();
+    }
+
+    function escapeHtml(str) {
+      return String(str)
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#039;');
+    }
+
+    function goPlanner() {
+      window.location.href = nextUrl();
+    }
+
+    function goCreateTrip() {
+      window.location.href = '/planner';
+    }
+
+    function renderSignedOut() {
+      document.getElementById('profileSub').textContent = 'Sign in to see your profile.';
+      document.getElementById('profilePills').innerHTML = '';
+      document.getElementById('tripsList').innerHTML = '<div class="empty">Sign in to view your saved trips.</div>';
+    }
+
+    async function loadProfile() {
+      const user = await authFetch('/me');
+      document.getElementById('profileSub').textContent = `Signed in as ${user.name || 'Traveler'}.`;
+      const pills = document.getElementById('profilePills');
+      pills.innerHTML = '';
+      const p1 = document.createElement('div');
+      p1.className = 'pill';
+      p1.textContent = `Name: ${user.name || 'Traveler'}`;
+      const p2 = document.createElement('div');
+      p2.className = 'pill';
+      p2.textContent = `Email: ${user.email || ''}`;
+      pills.appendChild(p1);
+      pills.appendChild(p2);
+    }
+
+    async function loadTrips() {
+      const trips = await authFetch('/trips');
+      const list = document.getElementById('tripsList');
+      list.innerHTML = '';
+
+      if (!trips.length) {
+        list.innerHTML = '<div class="empty">No saved trips yet.</div>';
+        return;
+      }
+
+      trips.forEach((t) => {
+        const row = document.createElement('div');
+        row.className = 'row';
+        row.innerHTML = `
+          <div class="meta">
+            <div class="name">${escapeHtml(t.title || 'Trip')}</div>
+            <div class="desc">${escapeHtml(t.destination || '')}</div>
+          </div>
+          <button class="btn" type="button">Open</button>
+          <button class="btn danger" type="button">Delete</button>
+        `;
+
+        const buttons = row.querySelectorAll('button');
+        const openBtn = buttons[0];
+        const deleteBtn = buttons[1];
+
+        openBtn.addEventListener('click', () => {
+          window.location.href = `/planner?trip_id=${encodeURIComponent(t.id)}`;
+        });
+
+        deleteBtn.addEventListener('click', async () => {
+          const ok = window.confirm(`Delete “${t.title || 'Trip'}”? This cannot be undone.`);
+          if (!ok) return;
+          await authFetch(`/trips/${t.id}`, { method: 'DELETE' }).catch(() => {});
+          await loadTrips().catch(() => {});
+        });
+
+        list.appendChild(row);
+      });
+    }
+
+    async function init() {
+      const token = getToken();
+      setSignedInUi(!!token);
+
+      if (!token) {
+        renderSignedOut();
+        return;
+      }
+
+      try {
+        await loadProfile();
+        await loadTrips();
+      } catch {
+        localStorage.removeItem('tragent_token');
+        setSignedInUi(false);
+        renderSignedOut();
+      }
+    }
+
+    init();
+  </script>
+</body>
+</html>
