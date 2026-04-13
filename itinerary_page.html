@@ -1114,62 +1114,42 @@
         return;
       }
 
+      const profile = getPersonalizationProfile();
+
       window.location.href =
         '/planner?dest=' + encodeURIComponent(dest) +
         '&days=' + encodeURIComponent(days) +
         '&interests=' + encodeURIComponent(interests) +
+        '&group_type=' + encodeURIComponent(profile.group_type) +
+        '&pace=' + encodeURIComponent(profile.pace) +
+        '&budget=' + encodeURIComponent(profile.budget) +
+        '&place_style=' + encodeURIComponent(profile.place_style) +
+        '&food_focus=' + encodeURIComponent(String(profile.food_focus)) +
         '&autogen=1';
-    }
-
-    async function fetchPlaces(destination, interestId) {
-      const q = `${mapInterestToQuery(interestId)} in ${destination}`;
-      const data = await apiFetch(`/places/search?q=${encodeURIComponent(q)}`);
-      return (data.results || []).slice(0, 8).map(normalizePlace);
-    }
-
-    async function generateItinerary() {
-      const destination = document.getElementById('dest').value.trim();
-      const days = parseInt(document.getElementById('days').value);
-
-      if (!destination) {
-        document.getElementById('dest').focus();
-        return;
       }
+        function collectPlacesFromResults() {
+          const seen = new Set();
+          const places = [];
+          currentPlan.interests.forEach((interestId) => {
+            (currentResults?.[interestId] || []).forEach((p) => {
+              if (!p?.place_id || seen.has(p.place_id)) return;
+              seen.add(p.place_id);
+              places.push(normalizePlace(p));
+            });
+          });
+          return places;
+        }
 
-      const interests = [...selectedInterests];
-      if (!interests.length) interests.push('food', 'coffee', 'parks');
-
-      currentPlan = { destination, days, interests };
-      showScreen('loading');
-
-      selectedPlaceIds = new Set();
-      try {
-        const entries = await Promise.all(
-          currentPlan.interests.map(async (interestId) => [interestId, await fetchPlaces(destination, interestId)])
-        );
-        currentResults = Object.fromEntries(entries);
-      } catch {
-        currentResults = Object.fromEntries(
-          currentPlan.interests.map((interestId) => [interestId, shuffleInPlace([...MOCK_PLACES]).slice(0, 6)])
-        );
-      }
-
-      renderResults();
-      showScreen('results');
+    function getPersonalizationProfile() {
+      return {
+        group_type: document.getElementById('profile-group-type')?.value || 'solo',
+        pace: document.getElementById('profile-pace')?.value || 'balanced',
+        budget: document.getElementById('profile-budget')?.value || 'medium',
+        place_style: document.getElementById('profile-place-style')?.value || 'mix',
+        food_focus: (document.getElementById('profile-food-focus')?.value || 'true') === 'true',
+      };
     }
-
-    function collectPlacesFromResults() {
-      const seen = new Set();
-      const places = [];
-      currentPlan.interests.forEach((interestId) => {
-        (currentResults?.[interestId] || []).forEach((p) => {
-          if (!p?.place_id || seen.has(p.place_id)) return;
-          seen.add(p.place_id);
-          places.push(normalizePlace(p));
-        });
-      });
-      return places;
-    }
+        
 
     function autoGenerateFromResults() {
       const all = collectPlacesFromResults();
