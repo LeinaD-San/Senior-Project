@@ -1708,6 +1708,18 @@
       renderPagination(root);
     }
 
+    const ALL_INTEREST_IDS = [
+      "food",
+      "coffee",
+      "parks",
+      "museums",
+      "nightlife",
+      "shopping",
+      "outdoors",
+      "history",
+    ];
+
+
     // interest queries + shuffle 
     const INTEREST_TO_QUERY = {
       food: "restaurants",
@@ -1719,6 +1731,73 @@
       outdoors: "outdoor activities",
       history: "historical sites",
     };
+
+
+    function shuffleInPlace(arr) {
+      for (let i = arr.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+      }
+      return arr;
+    }
+
+    function resolvePlannerInterests(interestsCsv) {
+      const picked = String(interestsCsv || "")
+        .split(",")
+        .map(s => s.trim())
+        .filter(Boolean);
+
+      return picked.length ? picked : [...ALL_INTEREST_IDS];
+    }
+
+    function buildInterestQueries(destination, interestsCsv) {
+      const interestIds = resolvePlannerInterests(interestsCsv);
+      const destPart = destination ? ` in ${destination}` : "";
+
+      return interestIds.map(id => (INTEREST_TO_QUERY[id] || id) + destPart);
+    }
+
+    function interleaveResults(groupedResults) {
+      const groups = groupedResults.filter(g => g.length > 0);
+      if (!groups.length) return [];
+
+      const result = [];
+      const seen = new Set();
+      const maxLen = Math.max(...groups.map(g => g.length));
+
+      for (let i = 0; i < maxLen; i++) {
+        for (const group of groups) {
+          if (i < group.length) {
+            const p = group[i];
+            if (!p.place_id || seen.has(p.place_id)) continue;
+            seen.add(p.place_id);
+            result.push(p);
+          }
+        }
+      }
+      return result;
+    }
+
+    async function searchByInterests(destination, interestsCsv) {
+      const queries = buildInterestQueries(destination, interestsCsv);
+      if (!queries.length) return [];
+
+      const grouped = [];
+      for (const q of queries) {
+        const res = await fetch(API_BASE + "/places/search?q=" + encodeURIComponent(q));
+        if (!res.ok) {
+          grouped.push([]);
+          continue;
+        }
+
+        const data = await res.json();
+        grouped.push(shuffleInPlace([...(data.results || [])]));
+      }
+
+      return interleaveResults(grouped);
+    }
+
+    
 
     function buildInterestQueries(destination, interestsCsv) {
       if (!interestsCsv) return [];
@@ -2135,10 +2214,16 @@ renderPlannerProfileSummary();
 setupCharLeftCounters();
 setupDestinationAutocomplete();
 
-if (destParam && interestsParam) {
-  document.getElementById('q').value = interestsParam.split(',').join(', ');
+if (destParam) {
+  const resolvedInterests = resolvePlannerInterests(interestsParam);
+
+  document.getElementById('q').value =
+    interestsParam && interestsParam.trim()
+      ? interestsParam.split(',').join(', ')
+      : 'All categories';
+
   (async () => {
-    const merged = await searchByInterests(destParam, interestsParam);
+    const merged = await searchByInterests(destParam, resolvedInterests.join(','));
     renderResults(merged);
   })();
 } else if (qParam) {

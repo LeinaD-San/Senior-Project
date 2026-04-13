@@ -23,6 +23,8 @@ from pathlib import Path
 import json
 from openai import OpenAI
 
+import re
+
 BASE_DIR = Path(__file__).resolve().parent
 
 load_dotenv()
@@ -1010,6 +1012,11 @@ async def ai_replace_stop(body: ReplaceStopRequest):
         pid = place.get("place_id")
         if not pid or pid in excluded:
             continue
+
+        details = await fetch_place_details_for_scoring(pid)
+        if details:
+            place.update(details)
+
         place["_interest"] = body.interest
         place["_score"] = score_place(place, body.interest, profile)
         ranked.append(place)
@@ -1040,6 +1047,12 @@ def score_place(place: dict, interest: str, profile: Optional[TripProfile]) -> f
 
     price_level = place.get("price_level")
 
+    open_now = place.get("open_now")
+    if open_now is False:
+        score -= 35
+    elif open_now is True:
+        score += 8
+
     name = (place.get("name") or "").lower()
     address = (place.get("address") or "").lower()
     text_blob = f"{name} {address}"
@@ -1059,6 +1072,12 @@ def score_place(place: dict, interest: str, profile: Optional[TripProfile]) -> f
         "mall", "market", "shopping center", "outlet", "bookstore",
         "general store", "plaza", "district", "retail"
     ]
+
+    if profile.group_type in ("solo", "couple"):
+        if any(word in text_blob for word in [
+            "play museum", "play center", "indoor play", "toddler", "kids", "children"
+        ]):
+            score -= 100
 
     # place style
     if profile.place_style == "hidden_gems":
@@ -1113,7 +1132,7 @@ def score_place(place: dict, interest: str, profile: Optional[TripProfile]) -> f
         ]):
             score += 8
         if any(word in text_blob for word in kid_keywords):
-            score -= 18
+            score -= 40
         if interest == "shopping":
             if any(word in text_blob for word in shopping_general_keywords):
                 score += 10
@@ -1379,29 +1398,54 @@ def build_balanced_itinerary(
             preferred_interests = slot_preferences[min(slot_index, len(slot_preferences) - 1)]
             chosen = None
 
-            for interest in preferred_interests:
-                if interest in used_interests_today:
-                    continue
+            attempts = 0
+            max_attempts = 12
 
-                candidate = pop_next_from_interest(interest)
+            while attempts < max_attempts and not chosen:
+                attempts += 1
+                candidate = None
+
+                for interest in preferred_interests:
+                    if interest in used_interests_today:
+                        continue
+
+                    possible = pop_next_from_interest(interest)
+                    if not possible:
+                        continue
+
+                    possible["_interest"] = possible.get("_interest") or interest
+
+                    if can_fit(itinerary[day_index], possible):
+                        candidate = possible
+                        break
+                    else:
+                        pid = possible.get("place_id")
+                        if pid:
+                            used_place_ids.discard(pid)
+                        pools.setdefault(interest, []).append(possible)
+
                 if not candidate:
-                    continue
+                    fallback = pop_next_any(used_interests_today)
+                    if fallback and can_fit(itinerary[day_index], fallback):
+                        candidate = fallback
+                    elif fallback:
+                        pid = fallback.get("place_id")
+                        if pid:
+                            used_place_ids.discard(pid)
+                        pools.setdefault(fallback.get("_interest", "other"), []).append(fallback)
 
-                candidate["_interest"] = candidate.get("_interest") or interest
-
-                if can_fit(itinerary[day_index], candidate):
-                    chosen = candidate
-                    used_interests_today.add(interest)
+                if not candidate:
                     break
-                else:
-                    pools.setdefault(interest, []).append(candidate)
 
-            if not chosen:
-                fallback = pop_next_any(used_interests_today)
-                if fallback and can_fit(itinerary[day_index], fallback):
-                    chosen = fallback
-                elif fallback:
-                    pools.setdefault(fallback.get("_interest", "other"), []).append(fallback)
+                duration = estimate_visit_minutes(candidate)
+                start_min = itinerary[day_index]["_clock"]
+                end_min = start_min + duration
+
+                arrival_hhmm = minutes_to_hhmm(start_min)
+                departure_hhmm = minutes_to_hhmm(end_min)
+
+                pid = candidate.get("place_id")
+                chosen = candidate
 
             if not chosen:
                 continue
@@ -1409,6 +1453,8 @@ def build_balanced_itinerary(
             duration = estimate_visit_minutes(chosen)
             start_min = itinerary[day_index]["_clock"]
             end_min = start_min + duration
+            arrival_hhmm = minutes_to_hhmm(start_min)
+            departure_hhmm = minutes_to_hhmm(end_min)
 
             itinerary[day_index]["stops"].append({
                 "place_id": chosen.get("place_id"),
@@ -1417,8 +1463,8 @@ def build_balanced_itinerary(
                 "rating": chosen.get("rating"),
                 "lat": chosen.get("lat"),
                 "lng": chosen.get("lng"),
-                "arrival_time": minutes_to_hhmm(start_min),
-                "departure_time": minutes_to_hhmm(end_min),
+                "arrival_time": arrival_hhmm,
+                "departure_time": departure_hhmm,
                 "suggestion_note": (
                     f"Suggested from {chosen.get('_interest', 'mixed')} results. "
                     f"Estimated visit time: {duration} min."
@@ -1474,6 +1520,47 @@ def distribute_places_across_days(
     return itinerary
 
 
+async def fetch_place_details_for_scoring(place_id: str) -> dict:
+    api_key = os.getenv("GOOGLE_MAPS_API_KEY")
+    if not api_key:
+        return {}
+
+    url = "https://maps.googleapis.com/maps/api/place/details/json"
+    params = {
+        "place_id": place_id,
+        "key": api_key,
+        "fields": ",".join([
+            "place_id",
+            "opening_hours",
+            "price_level",
+            "types",
+            "name",
+            "formatted_address",
+        ]),
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            r = await client.get(url, params=params)
+            r.raise_for_status()
+            data = r.json()
+
+        if data.get("status") != "OK":
+            return {}
+
+        result = data.get("result", {}) or {}
+        opening = result.get("opening_hours") or {}
+
+        return {
+            "open_now": opening.get("open_now"),
+            "hours": opening.get("weekday_text", []),
+            "price_level": result.get("price_level"),
+            "types": result.get("types", []),
+        }
+    except Exception:
+        return {}
+
+
 @app.post("/ai/itinerary", response_model=AIItineraryResponse)
 async def ai_itinerary(body: ItineraryRequest):
     profile = body.profile or TripProfile()
@@ -1497,9 +1584,13 @@ async def ai_itinerary(body: ItineraryRequest):
         scored = []
 
         for place in results:
+            details = await fetch_place_details_for_scoring(place.get("place_id"))
+            if details:
+                place.update(details)
             place["_interest"] = interest
-            place["_score"] = score_place(place, interest, profile)
+            place["_score"] = score_place(place,interest,profile)
             scored.append(place)
+
 
         seen = set()
         ranked = []
@@ -1530,6 +1621,121 @@ async def ai_itinerary(body: ItineraryRequest):
         "days": body.days,
         "itinerary": itinerary,
     }
+
+async def fetch_place_details_for_scoring(place_id: str) -> dict:
+    api_key = os.getenv("GOOGLE_MAPS_API_KEY")
+    if not api_key or not place_id:
+        return {}
+    url = "https://maps.googleapis.com/maps/api/place/details/json"
+    params = {
+        "place_id": place_id,
+        "key": api_key,
+        "fields": ",".join([
+            "place_id",
+            "opening_hours",
+            "price_level",
+            "types",
+            "name",
+            'formatted_address',
+        ]),
+    }
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            r = await client.get(url,params=params)
+            r.raise_for_status()
+            data = r.json()
+        if data.get('status') != 'OK':
+            return {}
+        result = data.get('result',{}) or{}
+        opening = result.get('opening_hours') or {}
+
+        return{
+            "open_now": opening.get('open_now'),
+            "hours":opening.get('weekday_text', []),
+            'types': result.get('types',[]),
+            'price_level':result.get('price_level'),
+        }
+    except Exception:
+        return{}
+
+DAY_NAME_TO_INDEX = {
+    "Monday": 0,
+    "Tuesday": 1,
+    "Wednesday": 2,
+    "Thursday": 3,
+    "Friday": 4,
+    "Saturday": 5,
+    "Sunday": 6,
+}
+
+def hhmm_to_minutes(hhmm:str) -> int:
+    h,m = hhmm.split(":")
+    return int(h) * 60 + int(m)
+def parse_clock_to_minutes(label:str)-> int | None:
+    s = (label or '').strip().upper().replace(' ','')
+    m = re.match(r"^(\d{1,2}):(\d{2})(AM|PM)$", s)
+    if not m:
+        return None
+    hour = int(m.group(1))
+    minute = int(m.group(2))
+    meridium = m.group(3)
+
+    if hour == 12:
+        hour = 0
+    if meridium == "PM":
+        hour += 12
+    return hour * 60 + minute
+
+
+def is_place_open_for_time(place: dict, day_index: int, arrival_hhmm: str, departure_hhmm: str | None = None) -> bool:
+    weekday_lines = place.get("hours") or []
+    if not weekday_lines:
+        return True  # if we have no hours, don't block it
+
+    line = weekday_lines[day_index % len(weekday_lines)] if weekday_lines else None
+    if not line:
+        return True
+
+    if not weekday_lines:
+        return True
+
+    line = weekday_lines[day_index % len(weekday_lines)] if weekday_lines else None
+    if not line:
+        return True
+
+    if "Closed" in line:
+        return False
+
+    if "Open 24 hours" in line:
+        return True
+
+    _, raw_ranges = line.split(":", 1)
+    raw_ranges = raw_ranges.strip()
+
+    arrival_min = hhmm_to_minutes(arrival_hhmm)
+    departure_min = hhmm_to_minutes(departure_hhmm) if departure_hhmm else arrival_min
+
+    ranges = [r.strip() for r in raw_ranges.split(",") if r.strip()]
+    for r in ranges:
+        parts = re.split(r"\s*[–-]\s*", r)
+        if len(parts) != 2:
+            continue
+
+        start_min = parse_clock_to_minutes(parts[0])
+        end_min = parse_clock_to_minutes(parts[1])
+        if start_min is None or end_min is None:
+            continue
+
+        # handle overnight close like 10:00 PM - 2:00 AM
+        if end_min <= start_min:
+            if arrival_min >= start_min or departure_min <= end_min:
+                return True
+        else:
+            if arrival_min >= start_min and departure_min <= end_min:
+                return True
+
+    return False
+        
 
 """
 #AI assistant
