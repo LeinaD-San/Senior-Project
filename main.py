@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone, date
 import base64
 import hashlib
 import hmac
@@ -146,6 +146,7 @@ class ItineraryRequest(BaseModel):
     days: int = Field(ge=1, le=14)
     interests: List[str] = []
     profile: Optional[TripProfile]=None
+    start_date: Optional[str] = None
 
 
 #AI classes will give the backend a clean response format
@@ -640,6 +641,18 @@ async def places_search(q: str, lat: Optional[float] = None, lng: Optional[float
     return {"query": q, "count": len(results), "results": results}
 
 '''
+
+def get_real_weekday_index(start_date_str: str | None, day_offset: int) -> int:
+    if start_date_str:
+        try:
+            trip_start = datetime.strptime(start_date_str, "%Y-%m-%d").date()
+        except ValueError:
+            trip_start = datetime.now().date()
+    else:
+        trip_start = datetime.now().date()
+    target_day = trip_start + timedelta(days = day_offset)
+    return target_day.weekday()
+
 def estimate_price_score(place: dict) -> int:
     price_level = place.get('price_level')
     if isinstance(price_level, int):
@@ -1026,7 +1039,9 @@ async def ai_replace_stop(body: ReplaceStopRequest):
     if not ranked:
         raise HTTPException(status_code=404, detail="No replacement found")
 
-    best = ranked[0]
+    top_pool = ranked[:5] if len(ranked) >= 5 else ranked
+    best = secrets.choice(top_pool)
+
     return {
         "place_id": best.get("place_id"),
         "name": best.get("name"),
@@ -1315,11 +1330,71 @@ def get_slot_interest_preferences(profile: Optional[TripProfile], max_stops_per_
     ]
 
 
+def get_place_open_minute(place: dict, day_index: int) -> int | None:
+    weekday_lines = place.get("hours") or []
+    if not weekday_lines:
+        return None
+
+    line = weekday_lines[day_index % len(weekday_lines)]
+    if not line:
+        return None
+
+    if "Closed" in line:
+        return None
+    if "Open 24 hours" in line:
+        return 0
+
+    _, raw_ranges = line.split(":", 1)
+    raw_ranges = raw_ranges.strip()
+
+    first_range = raw_ranges.split(",")[0].strip()
+    parts = re.split(r"\s*[–-]\s*", first_range)
+    if len(parts) != 2:
+        return None
+
+    return parse_clock_to_minutes(parts[0])
+
+
+def get_place_open_close_minutes(place: dict, weekday_index: int) -> tuple[int | None, int | None]:
+    weekday_lines = place.get("hours") or []
+    if not weekday_lines or weekday_index < 0 or weekday_index >= len(weekday_lines):
+        return (None, None)
+
+    line = weekday_lines[weekday_index]
+    if not line:
+        return (None, None)
+
+    if "Closed" in line:
+        return (None, None)
+    if "Open 24 hours" in line:
+        return (0, 24 * 60)
+
+    _, raw_ranges = line.split(":", 1)
+    raw_ranges = raw_ranges.strip()
+
+    first_range = raw_ranges.split(",")[0].strip()
+    parts = re.split(r"\s*[–-]\s*", first_range)
+    if len(parts) != 2:
+        return (None, None)
+
+    open_min = parse_clock_to_minutes(parts[0])
+    close_min = parse_clock_to_minutes(parts[1])
+
+    if open_min is None or close_min is None:
+        return (None, None)
+
+    if close_min <= open_min:
+        close_min += 24 * 60
+
+    return (open_min, close_min)
+
+
 def build_balanced_itinerary(
     grouped_places: dict[str, List[dict]],
     days: int,
     profile: Optional[TripProfile] = None,
     max_stops_per_day: int = 3,
+    start_date:Optional[str] = None,
 ) -> List[dict]:
     profile = profile or TripProfile()
 
@@ -1393,6 +1468,7 @@ def build_balanced_itinerary(
 
     for day_index in range(days):
         used_interests_today: set[str] = set()
+        weekday_index = get_real_weekday_index(start_date, day_index)
 
         for slot_index in range(max_stops_per_day):
             preferred_interests = slot_preferences[min(slot_index, len(slot_preferences) - 1)]
@@ -1439,20 +1515,64 @@ def build_balanced_itinerary(
 
                 duration = estimate_visit_minutes(candidate)
                 start_min = itinerary[day_index]["_clock"]
+
+                open_min, close_min = get_place_open_close_minutes(candidate, weekday_index)
+
+                if open_min is None and close_min is None:
+                    pid = candidate.get('place_id')
+                    if pid:
+                        used_place_ids.discard(pid)
+                    pools.setdefault(candidate.get('_interest', 'other'), []).append(candidate)
+                    continue
+                if open_min is not None and start_min < open_min:
+                    start_min = open_min
+
+                latest_start_by_slot = {
+                    0: 13 * 60,   
+                    1: 16 * 60,   
+                    2: 20 * 60,   
+                    3: 22 * 60,   
+                    4: 23 * 60,
+                }
+
+                slot_latest = latest_start_by_slot.get(slot_index, 23 * 60)
+
+                if start_min > slot_latest:
+                    pid = candidate.get("place_id")
+                    if pid:
+                        used_place_ids.discard(pid)
+                    pools.setdefault(candidate.get("_interest", "other"), []).append(candidate)
+                    continue
+
+
                 end_min = start_min + duration
 
+                if close_min is not None and end_min > close_min:
+                    pid = candidate.get('place_id')
+                    if pid:
+                        used_place_ids.discard(pid)
+                    pools.setdefault(candidate.get('_interest', 'other'), []).append(candidate)
+                    continue
+                if end_min - day_start > day_budget:
+                    pid = candidate.get('place_id')
+                    if pid:
+                        used_place_ids.discard(pid)
+                    pools.setdefault(candidate.get('_interest', 'other'), []).append(candidate)
+                    continue
+    
                 arrival_hhmm = minutes_to_hhmm(start_min)
                 departure_hhmm = minutes_to_hhmm(end_min)
 
-                pid = candidate.get("place_id")
                 chosen = candidate
+                chosen["_scheduled_start_min"] = start_min
+                chosen["_scheduled_end_min"] = end_min
 
             if not chosen:
                 continue
 
             duration = estimate_visit_minutes(chosen)
-            start_min = itinerary[day_index]["_clock"]
-            end_min = start_min + duration
+            start_min = chosen.get("_scheduled_start_min", itinerary[day_index]["_clock"])
+            end_min = chosen.get("_scheduled_end_min", start_min + duration)
             arrival_hhmm = minutes_to_hhmm(start_min)
             departure_hhmm = minutes_to_hhmm(end_min)
 
@@ -1614,6 +1734,7 @@ async def ai_itinerary(body: ItineraryRequest):
         days=body.days,
         profile=profile,
         max_stops_per_day=max_stops_per_day,
+        start_date = body.start_date,
     )
 
     return {
@@ -1622,51 +1743,7 @@ async def ai_itinerary(body: ItineraryRequest):
         "itinerary": itinerary,
     }
 
-async def fetch_place_details_for_scoring(place_id: str) -> dict:
-    api_key = os.getenv("GOOGLE_MAPS_API_KEY")
-    if not api_key or not place_id:
-        return {}
-    url = "https://maps.googleapis.com/maps/api/place/details/json"
-    params = {
-        "place_id": place_id,
-        "key": api_key,
-        "fields": ",".join([
-            "place_id",
-            "opening_hours",
-            "price_level",
-            "types",
-            "name",
-            'formatted_address',
-        ]),
-    }
-    try:
-        async with httpx.AsyncClient(timeout=15) as client:
-            r = await client.get(url,params=params)
-            r.raise_for_status()
-            data = r.json()
-        if data.get('status') != 'OK':
-            return {}
-        result = data.get('result',{}) or{}
-        opening = result.get('opening_hours') or {}
 
-        return{
-            "open_now": opening.get('open_now'),
-            "hours":opening.get('weekday_text', []),
-            'types': result.get('types',[]),
-            'price_level':result.get('price_level'),
-        }
-    except Exception:
-        return{}
-
-DAY_NAME_TO_INDEX = {
-    "Monday": 0,
-    "Tuesday": 1,
-    "Wednesday": 2,
-    "Thursday": 3,
-    "Friday": 4,
-    "Saturday": 5,
-    "Sunday": 6,
-}
 
 def hhmm_to_minutes(hhmm:str) -> int:
     h,m = hhmm.split(":")
@@ -1690,14 +1767,7 @@ def parse_clock_to_minutes(label:str)-> int | None:
 def is_place_open_for_time(place: dict, day_index: int, arrival_hhmm: str, departure_hhmm: str | None = None) -> bool:
     weekday_lines = place.get("hours") or []
     if not weekday_lines:
-        return True  # if we have no hours, don't block it
-
-    line = weekday_lines[day_index % len(weekday_lines)] if weekday_lines else None
-    if not line:
-        return True
-
-    if not weekday_lines:
-        return True
+        return True 
 
     line = weekday_lines[day_index % len(weekday_lines)] if weekday_lines else None
     if not line:
