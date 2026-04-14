@@ -1074,8 +1074,11 @@ def score_place(place: dict, interest: str, profile: Optional[TripProfile]) -> f
 
     kid_keywords = [
         "kids", "kid", "children", "childrens", "children's",
-        "play museum", "play center", "playground", "indoor play",
-        "family entertainment", "trampoline", "arcade", "toddler"
+        "play museum", "play street", "play st", "play center",
+        "playground", "indoor play", "family entertainment",
+        "trampoline", "arcade", "toddler", "little explorers",
+        "discovery center", "imagination", "toy museum",
+        "jump", "bounce", "soft play"
     ]
 
     shopping_narrow_keywords = [
@@ -1142,12 +1145,16 @@ def score_place(place: dict, interest: str, profile: Optional[TripProfile]) -> f
             score += 8
 
     elif profile.group_type == "solo":
+        child_focused = any(word in text_blob for word in kid_keywords)
+
         if any(word in text_blob for word in [
             "museum", "coffee", "park", "bookstore", "walk", "historic"
-        ]):
+        ]) and not child_focused:
             score += 8
-        if any(word in text_blob for word in kid_keywords):
-            score -= 40
+
+        if child_focused:
+            score -= 120
+
         if interest == "shopping":
             if any(word in text_blob for word in shopping_general_keywords):
                 score += 10
@@ -1280,21 +1287,23 @@ def build_day_time_slots(profile: Optional[TripProfile] = None) -> list[tuple[st
     if profile.pace == "relaxed":
         return [
             ("10:00", "11:30"),
-            ("13:00", "14:30"),
-            ("16:00", "18:00"),
+            ("13:00", "15:00"),
+            ("17:00", "19:00"),
         ]
     elif profile.pace == "packed":
         return [
-            ("08:30", "10:00"),
+            ("08:30", "09:30"),
             ("10:30", "12:00"),
             ("13:00", "14:30"),
-            ("15:00", "16:30"),
+            ("15:30", "17:00"),
+            ("18:30", "21:00"),
         ]
     else:
         return [
             ("09:00", "10:30"),
             ("12:00", "13:30"),
-            ("15:00", "17:00"),
+            ("15:30", "17:00"),
+            ("18:30", "20:30"),
         ]
 
 
@@ -1321,6 +1330,8 @@ def get_slot_interest_preferences(profile: Optional[TripProfile], max_stops_per_
             ["coffee"],
             ["museums", "history", "parks"],
             ["shopping", "parks", "museums"],
+            ["food", "shopping", "parks"],
+            evening,
         ]
 
     return [
@@ -1377,8 +1388,20 @@ def get_place_open_close_minutes(place: dict, weekday_index: int) -> tuple[int |
     if len(parts) != 2:
         return (None, None)
 
-    open_min = parse_clock_to_minutes(parts[0])
-    close_min = parse_clock_to_minutes(parts[1])
+    open_label = parts[0].strip()
+    close_label = parts[1].strip()
+
+    open_min = parse_clock_to_minutes(open_label)
+    close_min = parse_clock_to_minutes(close_label)
+
+    if open_min is None and close_min is not None:
+        close_has_meridiem = bool(re.search(r"(AM|PM)$", re.sub(r"\s+", "", close_label.upper())))
+        open_has_meridiem = bool(re.search(r"(AM|PM)$", re.sub(r"\s+", "", open_label.upper())))
+
+        if close_has_meridiem and not open_has_meridiem:
+            close_norm = re.sub(r"\s+", "", close_label.upper()).replace(".", "")
+            inferred_meridiem = "PM" if close_norm.endswith("PM") else "AM"
+            open_min = parse_clock_to_minutes(f"{open_label} {inferred_meridiem}")
 
     if open_min is None or close_min is None:
         return (None, None)
@@ -1387,7 +1410,6 @@ def get_place_open_close_minutes(place: dict, weekday_index: int) -> tuple[int |
         close_min += 24 * 60
 
     return (open_min, close_min)
-
 
 def build_balanced_itinerary(
     grouped_places: dict[str, List[dict]],
@@ -1401,6 +1423,7 @@ def build_balanced_itinerary(
     day_budget = get_day_budget_minutes(profile)
     day_start = get_day_start_minutes(profile)
     slot_preferences = get_slot_interest_preferences(profile, max_stops_per_day)
+    time_slots = build_day_time_slots(profile)
 
     itinerary = [
         {
@@ -1456,9 +1479,10 @@ def build_balanced_itinerary(
 
     def can_fit(day_info: dict, place: dict) -> bool:
         duration = estimate_visit_minutes(place)
+        effective_duration = min(duration,90)
         long_flag = is_long_activity(place)
 
-        if day_info["_used_minutes"] + duration > day_budget:
+        if day_info["_used_minutes"] + effective_duration > day_budget:
             return False
 
         if long_flag and day_info["_has_long_activity"]:
@@ -1514,45 +1538,56 @@ def build_balanced_itinerary(
                     break
 
                 duration = estimate_visit_minutes(candidate)
-                start_min = itinerary[day_index]["_clock"]
+
+                slot_start_hhmm, slot_end_hhmm = time_slots[min(slot_index, len(time_slots) - 1)]
+                slot_start_min = hhmm_to_minutes(slot_start_hhmm)
+
+                start_min = max(itinerary[day_index]["_clock"], slot_start_min)
+
 
                 open_min, close_min = get_place_open_close_minutes(candidate, weekday_index)
 
                 if open_min is None and close_min is None:
-                    pid = candidate.get('place_id')
-                    if pid:
-                        used_place_ids.discard(pid)
-                    pools.setdefault(candidate.get('_interest', 'other'), []).append(candidate)
-                    continue
-                if open_min is not None and start_min < open_min:
-                    start_min = open_min
-
-                latest_start_by_slot = {
-                    0: 13 * 60,   
-                    1: 16 * 60,   
-                    2: 20 * 60,   
-                    3: 22 * 60,   
-                    4: 23 * 60,
-                }
-
-                slot_latest = latest_start_by_slot.get(slot_index, 23 * 60)
-
-                if start_min > slot_latest:
+                    print("REJECTED HOURS:", candidate.get("name"), candidate.get("hours"))
                     pid = candidate.get("place_id")
                     if pid:
                         used_place_ids.discard(pid)
                     pools.setdefault(candidate.get("_interest", "other"), []).append(candidate)
                     continue
 
+                if open_min is not None and start_min < open_min:
+                    start_min = open_min
 
                 end_min = start_min + duration
 
                 if close_min is not None and end_min > close_min:
-                    pid = candidate.get('place_id')
-                    if pid:
-                        used_place_ids.discard(pid)
-                    pools.setdefault(candidate.get('_interest', 'other'), []).append(candidate)
-                    continue
+                    adjusted_duration = close_min - start_min
+
+                    minimum_duration_by_interest = {
+                        "coffee": 30,
+                        "food": 45,
+                        "museums": 60,
+                        "parks": 45,
+                        "history": 45,
+                        "shopping": 60,
+                        "nightlife": 45,
+                        "outdoors": 60,
+                    }
+
+                    min_allowed = minimum_duration_by_interest.get(
+                        candidate.get("_interest", "other"),
+                        45
+                    )
+
+                    if adjusted_duration < min_allowed:
+                        pid = candidate.get("place_id")
+                        if pid:
+                            used_place_ids.discard(pid)
+                        pools.setdefault(candidate.get("_interest", "other"), []).append(candidate)
+                        continue
+
+                    end_min = close_min
+
                 if end_min - day_start > day_budget:
                     pid = candidate.get('place_id')
                     if pid:
@@ -1560,12 +1595,10 @@ def build_balanced_itinerary(
                     pools.setdefault(candidate.get('_interest', 'other'), []).append(candidate)
                     continue
     
-                arrival_hhmm = minutes_to_hhmm(start_min)
-                departure_hhmm = minutes_to_hhmm(end_min)
-
                 chosen = candidate
                 chosen["_scheduled_start_min"] = start_min
                 chosen["_scheduled_end_min"] = end_min
+                used_interests_today.add(chosen.get("_interest", "other"))
 
             if not chosen:
                 continue
@@ -1591,8 +1624,9 @@ def build_balanced_itinerary(
                 ),
             })
 
+            actual_duration = end_min - start_min
             travel_buffer = 20
-            itinerary[day_index]["_used_minutes"] += duration + travel_buffer
+            itinerary[day_index]["_used_minutes"] += actual_duration + travel_buffer
             itinerary[day_index]["_clock"] = end_min + travel_buffer
 
             if is_long_activity(chosen):
@@ -1748,19 +1782,30 @@ async def ai_itinerary(body: ItineraryRequest):
 def hhmm_to_minutes(hhmm:str) -> int:
     h,m = hhmm.split(":")
     return int(h) * 60 + int(m)
-def parse_clock_to_minutes(label:str)-> int | None:
-    s = (label or '').strip().upper().replace(' ','')
+
+def parse_clock_to_minutes(label: str) -> int | None:
+    if not label:
+        return None
+
+    s = str(label).upper().strip()
+
+    s = re.sub(r"\s+", "", s)
+
+    s = s.replace(".", "")
+
     m = re.match(r"^(\d{1,2}):(\d{2})(AM|PM)$", s)
     if not m:
         return None
+
     hour = int(m.group(1))
     minute = int(m.group(2))
-    meridium = m.group(3)
+    meridiem = m.group(3)
 
     if hour == 12:
         hour = 0
-    if meridium == "PM":
+    if meridiem == "PM":
         hour += 12
+
     return hour * 60 + minute
 
 

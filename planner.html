@@ -749,6 +749,15 @@
       }
     }
 
+
+    function getTodayIsoDate() {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+
     // rebuild a carousel's images + dots with a new photo list
     function rebuildCarousel(container, photos) {
       // remove old images, dots, spinner
@@ -1169,6 +1178,8 @@
           lng: i.lng,
           notes: i.notes,
           completed: i.completed,
+          arrival_time: i.arrival_time || null,
+          departure_time: i.departure_time || null,
         });
       });
       resetDays(maxDay);
@@ -1904,7 +1915,8 @@
         destination: destination,
         days: tripState.days,
         interests: interests,
-        profile: personalizationProfile
+        profile: personalizationProfile,
+        start_date: getTodayIsoDate(),
       }),
     });
 
