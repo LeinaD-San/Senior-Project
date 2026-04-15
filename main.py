@@ -1035,17 +1035,6 @@ def score_place(place: dict, interest:str, profile: Optional[TripProfile]) -> fl
             score += 10
 
     return score
-    
-    
-    
-    if profile.group_type == "family" and ("park" in text_blob or "museum" in text_blob):
-        score += 4
-    if profile.group_type == "couple" and ("cafe" in text_blob or "scenic" in text_blob):
-        score += 5
-    if profile.group_type == "friends" and ("bar" in text_blob or "shopping" in text_blob):
-        score += 4
-    
-    return score
 
 def build_day_time_slots(profile: Optional[TripProfile] = None) -> list[tuple[str, str]]:
     profile = profile or TripProfile()
@@ -1056,7 +1045,7 @@ def build_day_time_slots(profile: Optional[TripProfile] = None) -> list[tuple[st
             ("13:00", "14:30"),
             ("16:00", "18:00"),
         ]
-    elif profile.pace == "fast":
+    elif profile.pace in ("fast", "packed"):
         return [
             ("08:30", "10:00"),
             ("10:30", "12:00"),
