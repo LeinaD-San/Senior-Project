@@ -5,7 +5,7 @@ import hmac
 import secrets
 
 from fastapi import FastAPI, Depends, HTTPException, Header, Query
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
 from typing import List, Annotated, Optional
 import os
@@ -30,6 +30,16 @@ load_dotenv()
 openai_client = OpenAI()
 
 app = FastAPI(title="Travel Agent API")
+
+
+@app.exception_handler(OperationalError)
+def sqlalchemy_operational_error_handler(request, exc):
+    return JSONResponse(
+        status_code=503,
+        content={
+            "detail": "Database unavailable. Start Postgres with `docker compose up -d` and verify `DATABASE_URL`.",
+        },
+    )
 
 
 @app.get("/config/maps")
@@ -143,6 +153,9 @@ class ItineraryRequest(BaseModel):
     days: int = Field(ge=1, le=14)
     interests: List[str] = []
     profile: Optional[TripProfile]=None
+    start_date: Optional[str] = None
+    template_name: Optional[str] = Field(default=None, max_length=60)
+    template_description: Optional[str] = Field(default=None, max_length=400)
 
 
 #AI classes will give the backend a clean response format
@@ -900,16 +913,29 @@ INTEREST_QUERY_MAP = {
     "history": "historic sites",
 }
 
-def build_interest_query(destination: str, interest: str, profile: Optional[TripProfile]) -> str:
+def build_interest_query(
+    destination: str,
+    interest: str,
+    profile: Optional[TripProfile],
+    template_description: Optional[str],
+) -> str:
     search_term = INTEREST_QUERY_MAP.get(interest, interest)
     profile = profile or TripProfile()
 
     modifiers: list[str] = []
 
-    if profile.budget == 'low':
-        modifiers.append('affordable budget friendly')
-    elif profile.budget == 'high':
-        modifiers.append('upscale premium')
+    if template_description:
+        cleaned = " ".join(template_description.split())
+        cleaned = cleaned[:140].strip()
+        if cleaned:
+            modifiers.append(cleaned)
+
+    if profile.budget == "low":
+        modifiers.append("affordable budget friendly")
+    elif profile.budget == "medium":
+        modifiers.append("moderately priced casual nice")
+    elif profile.budget == "high":
+        modifiers.append("upscale premium")
 
     if profile.place_style == 'hidden_gems':
         modifiers.append('local hidden gems')
@@ -934,12 +960,17 @@ def build_interest_query(destination: str, interest: str, profile: Optional[Trip
     return f'{search_term} in {destination}'
 
 #will give us real place candidates from google. 
-async def search_places_for_interests(destination: str, interest:str, profile: Optional[TripProfile]=None) -> List[dict]:
+async def search_places_for_interests(
+    destination: str,
+    interest: str,
+    profile: Optional[TripProfile] = None,
+    template_description: Optional[str] = None,
+) -> List[dict]:
     api_key = os.getenv("GOOGLE_MAPS_API_KEY")
     if not api_key:
         raise HTTPException(status_code=500, detail="GOOGLE_MAPS_API_KEY is not set")
 
-    query = build_interest_query(destination, interest, profile)
+    query = build_interest_query(destination, interest, profile, template_description)
 
     url = "https://maps.googleapis.com/maps/api/place/textsearch/json"
     params = {"query": query, "key": api_key}
@@ -1095,10 +1126,16 @@ def distribute_places_across_days(
 async def ai_itinerary(body: ItineraryRequest):
     interests = body.interests or ["food", "coffee", "parks"]
     profile = body.profile or TripProfile()
+    template_description = body.template_description
 
     scored_places = []
     for interest in interests:
-        results = await search_places_for_interests(body.destination, interest)
+        results = await search_places_for_interests(
+            body.destination,
+            interest,
+            profile,
+            template_description,
+        )
         for place in results: 
             place["_interest"] = interest
             scored_places.append((score_place(place, interest, profile), place))
@@ -1128,23 +1165,3 @@ async def ai_itinerary(body: ItineraryRequest):
         "days": body.days,
         "itinerary": itinerary,
     }
-
-"""
-#AI assistant
-@app.post("/ai/itinerary")
-async def ai_itinerary(body: ItineraryRequest):
-    itinerary = []
-    for d in range(1, body.days + 1):
-        itinerary.append({
-            "day": d,
-            "theme": " / ".join(body.interests) if body.interests else "General",
-            "plan": [
-                {"time": "09:00", "activity": f"Explore top sights in {body.destination}"},
-                {"time": "13:00", "activity": "Lunch at a popular spot"},
-                {"time": "15:00", "activity": "Something aligned with interests"},
-                {"time": "19:00", "activity": "Dinner + evening walk"},
-            ],
-        })
-    return {"destination": body.destination, "days": body.days, "itinerary": itinerary, "note": "AI stub"}
-'''
-"""

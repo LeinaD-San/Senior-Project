@@ -166,10 +166,19 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
-      const data = await res.json().catch(() => ({}));
+      const raw = await res.text();
+      const data = (() => {
+        try { return JSON.parse(raw); } catch { return {}; }
+      })();
 
       if (!res.ok) {
-        document.getElementById('error').textContent = data.detail || 'Authentication failed.';
+        const errorEl = document.getElementById('error');
+        if (Array.isArray(data.detail) && data.detail.length){
+          errorEl.textContent = data.detail.map(x => x.msg).join(', ');
+        }
+        else {
+          errorEl.textContent = data.detail || raw || `Authentication failed (${res.status})`;
+        }
         return;
       }
 

@@ -448,6 +448,7 @@
       <a href="/">Back to home</a>
       <span style="padding:0 8px;color:rgba(11,18,32,.35)">|</span>
       <a id="signInLink" href="/login">Sign in</a>
+      <a id="accountTopLink" href="/account" style="display:none">My Trips</a>
       <button id="logoutBtn" type="button" onclick="logout()" style="display:none">Log out</button>
     </div>
   </header>
@@ -484,12 +485,6 @@
 
       <!-- RIGHT: Search + results -->
       <div>
-        <div class="savedCard" id="accountCard" style="display:none">
-          <div class="savedTitle">Account</div>
-          <button class="accountBtn" id="accountBtn" type="button" onclick="goToAccount()">My Trips</button>
-        </div>
-        
-
 <div class="searchCard">
   <div style="font-weight:900; font-size:15px;">Current Destination</div>
   <div class="hint" style="margin-top:4px;">Edit your destination here. Searches will use this location.</div>
@@ -1077,7 +1072,7 @@
     function setSignedInUi(signedIn) {
       document.getElementById('signInLink').style.display = signedIn ? 'none' : '';
       document.getElementById('logoutBtn').style.display = signedIn ? '' : 'none';
-      document.getElementById('accountCard').style.display = signedIn ? '' : 'none';
+      document.getElementById('accountTopLink').style.display = signedIn ? '' : 'none';
     }
 
     function formatPriceEstimate(score){
@@ -1154,6 +1149,8 @@
       setupCharLeftCounters();
       tripState.activeDay = 1;
       tripState.currentTripId = trip.id;
+      localStorage.setItem('tragent_last_trip_id', String(trip.id));
+      localStorage.setItem('tragent_last_trip_title', String(trip.title || '').slice(0, 200));
       tripState.itemsByDay = {};
       for (let d = 1; d <= maxDay; d++) tripState.itemsByDay[d] = [];
       (trip.items || []).forEach((i) => {
@@ -1745,6 +1742,12 @@
     .map(s => s.trim())
     .filter(Boolean);
 
+  const templateId = params.get('template_id') || '';
+  const activeTemplate = readActiveTemplate();
+  const templatePayload = (activeTemplate && (!templateId || activeTemplate.id === templateId))
+    ? { template_name: activeTemplate.name, template_description: activeTemplate.description }
+    : {};
+
   try {
     const res = await fetch('/ai/itinerary', {
       method: 'POST',
@@ -1753,7 +1756,9 @@
         destination: destination,
         days: tripState.days,
         interests: interests,
-        profile: personalizationProfile
+        profile: personalizationProfile,
+        start_date: getTodayIsoDate(),
+        ...templatePayload,
       }),
     });
 
@@ -1836,6 +1841,8 @@
       }
 
       tripState.currentTripId = trip.id;
+      localStorage.setItem('tragent_last_trip_id', String(trip.id));
+      localStorage.setItem('tragent_last_trip_title', String(title || '').slice(0, 200));
 
       for (const [dayStr, items] of Object.entries(tripState.itemsByDay)) {
         const day = parseInt(dayStr);
@@ -2084,6 +2091,22 @@ const tripIdParam = params.get('trip_id');
 if (getToken() && tripIdParam) {
   const tripId = Number(tripIdParam);
   if (Number.isFinite(tripId) && tripId > 0) {
+    loadTripById(tripId).catch(() => {});
+  }
+}
+
+
+
+const autogenParam = params.get('autogen');
+if (autogenParam == '1') {
+  setTimeout(() => {
+    runAiGenerate();
+  }, 250);
+}
+  </script>
+</body>
+</html>
+0) {
     loadTripById(tripId).catch(() => {});
   }
 }
