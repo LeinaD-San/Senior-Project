@@ -128,7 +128,7 @@
       document.getElementById('tabRegister').classList.toggle('active', mode === 'register');
       document.getElementById('error').textContent = '';
 
-      const showName = mode == 'register';
+      const showName = mode === 'register';
       document.getElementById('nameLabel').style.display = showName ? 'block' : 'none';
       document.getElementById('name').style.display = showName ? 'block' : 'none';
     }
@@ -177,7 +177,7 @@
           errorEl.textContent = data.detail.map(x => x.msg).join(', ');
         }
         else {
-          errorEl.textContent = data.detail || raw || `Authentication failed (${res.status})`;
+          errorEl.textContent = data.detail || "Authentication failed";
         }
         return;
       }

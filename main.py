@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone, date
 import base64
 import hashlib
 import hmac
@@ -22,6 +22,8 @@ from pathlib import Path
 
 import json
 from openai import OpenAI
+
+import re
 
 BASE_DIR = Path(__file__).resolve().parent
 
@@ -143,6 +145,7 @@ class TripItemUpdate(BaseModel):
 
 class TripProfile(BaseModel):
     group_type: str = 'solo'
+    age_style: str = 'adult'
     pace: str = 'balanced'
     budget: str = 'medium'
     place_style: str = 'mix'
@@ -154,8 +157,6 @@ class ItineraryRequest(BaseModel):
     interests: List[str] = []
     profile: Optional[TripProfile]=None
     start_date: Optional[str] = None
-    template_name: Optional[str] = Field(default=None, max_length=60)
-    template_description: Optional[str] = Field(default=None, max_length=400)
 
 
 #AI classes will give the backend a clean response format
@@ -181,6 +182,12 @@ class AIItineraryResponse(BaseModel):
 
 class ReorderPayload(BaseModel):
     ordered_item_ids: List[int] = Field(min_length=1)
+
+class ReplaceStopRequest(BaseModel):
+    destination: str
+    interest: str
+    exclude_place_ids: List[str] = []
+    profile: Optional[TripProfile] = None
 
 
 AI_OUTLINE_SCHEMA = {
@@ -644,6 +651,18 @@ async def places_search(q: str, lat: Optional[float] = None, lng: Optional[float
     return {"query": q, "count": len(results), "results": results}
 
 '''
+
+def get_real_weekday_index(start_date_str: str | None, day_offset: int) -> int:
+    if start_date_str:
+        try:
+            trip_start = datetime.strptime(start_date_str, "%Y-%m-%d").date()
+        except ValueError:
+            trip_start = datetime.now().date()
+    else:
+        trip_start = datetime.now().date()
+    target_day = trip_start + timedelta(days = day_offset)
+    return target_day.weekday()
+
 def estimate_price_score(place: dict) -> int:
     price_level = place.get('price_level')
     if isinstance(price_level, int):
@@ -908,7 +927,7 @@ INTEREST_QUERY_MAP = {
     "parks": "parks",
     "museums": "museums",
     "nightlife": "bars nightlife",
-    "shopping": "shopping",
+    "shopping": "shopping malls markets bookstores mixed retail",
     "outdoors": "outdoor attractions",
     "history": "historic sites",
 }
@@ -924,12 +943,6 @@ def build_interest_query(
 
     modifiers: list[str] = []
 
-    if template_description:
-        cleaned = " ".join(template_description.split())
-        cleaned = cleaned[:140].strip()
-        if cleaned:
-            modifiers.append(cleaned)
-
     if profile.budget == "low":
         modifiers.append("affordable budget friendly")
     elif profile.budget == "medium":
@@ -937,27 +950,32 @@ def build_interest_query(
     elif profile.budget == "high":
         modifiers.append("upscale premium")
 
-    if profile.place_style == 'hidden_gems':
-        modifiers.append('local hidden gems')
-    elif profile.place_style == 'tourist_spots':
-        modifiers.append('popular tourist spots')
+    if profile.place_style == "hidden_gems":
+        modifiers.append("local hidden gems")
+    elif profile.place_style == "tourist_spots":
+        modifiers.append("popular tourist spots")
 
-    if profile.group_type == 'family':
-        modifiers.append('family friendly kid friendly')
-    elif profile.group_type == 'couple':
-        modifiers.append('romantic date night scenic')
-    elif profile.group_type == 'friends':
-        modifiers.append('group fun social lively')
-    elif profile.group_type == 'solo':
-        modifiers.append('solo friendly relaxed independent')
+    if profile.group_type == "family":
+        modifiers.append("family friendly kid friendly")
+    elif profile.group_type == "couple":
+        modifiers.append("romantic date night scenic")
+    elif profile.group_type == "friends":
+        modifiers.append("group fun social lively")
+    elif profile.group_type == "solo":
+        modifiers.append("solo friendly relaxed independent")
 
-    if profile.food_focus and interest in ('food', 'coffee'):
-        modifiers.append('popular local must try')
+    if interest == "shopping" and profile.group_type in ("solo", "couple", "friends"):
+        modifiers.append("general shopping mixed retail unisex")
+    elif interest == "shopping" and profile.group_type == "family":
+        modifiers.append("family friendly shopping")
 
-    modifier_text = ' '.join(m for m in modifiers if m).strip()
+    if profile.food_focus and interest in ("food", "coffee"):
+        modifiers.append("popular local must try")
+
+    modifier_text = " ".join(m for m in modifiers if m).strip()
     if modifier_text:
-        return f'{modifier_text} {search_term} in {destination}'
-    return f'{search_term} in {destination}'
+        return f"{modifier_text} {search_term} in {destination}"
+    return f"{search_term} in {destination}"
 
 #will give us real place candidates from google. 
 async def search_places_for_interests(
@@ -995,6 +1013,7 @@ async def search_places_for_interests(
             "name": p.get("name"),
             "address": p.get("formatted_address"),
             "rating": p.get("rating"),
+            'price_level':p.get('price_level'),
             "lat": location.get("lat"),
             "lng": location.get("lng"),
         })
@@ -1013,59 +1032,274 @@ def dedupe_places(places: List[dict]) -> List[dict]:
     return deduped
 
 
-def score_place(place: dict, interest:str, profile: Optional[TripProfile]) -> float:
+@app.post("/ai/replace-stop")
+async def ai_replace_stop(body: ReplaceStopRequest):
+    profile = body.profile or TripProfile()
+
+    results = await search_places_for_interests(body.destination, body.interest, profile)
+
+    ranked = []
+    excluded = set(body.exclude_place_ids or [])
+
+    for place in results:
+        pid = place.get("place_id")
+        if not pid or pid in excluded:
+            continue
+
+        details = await fetch_place_details_for_scoring(pid)
+        if details:
+            place.update(details)
+
+        place["_interest"] = body.interest
+        place["_score"] = score_place(place, body.interest, profile)
+        ranked.append(place)
+
+    ranked.sort(key=lambda p: p["_score"], reverse=True)
+
+    if not ranked:
+        raise HTTPException(status_code=404, detail="No replacement found")
+
+    top_pool = ranked[:5] if len(ranked) >= 5 else ranked
+    best = secrets.choice(top_pool)
+
+    return {
+        "place_id": best.get("place_id"),
+        "name": best.get("name"),
+        "address": best.get("address") or "",
+        "rating": best.get("rating"),
+        "lat": best.get("lat"),
+        "lng": best.get("lng"),
+        "interest": body.interest,
+    }
+
+def score_place(place: dict, interest: str, profile: Optional[TripProfile]) -> float:
     profile = profile or TripProfile()
     score = 0.0
 
-    rating = place.get('rating')
+    rating = place.get("rating")
     if isinstance(rating, (int, float)):
         score += float(rating) * 10
 
-    name = (place.get('name') or '').lower()
-    address = (place.get('address') or '').lower()
-    text_blob = f'{name} {address}'
+    price_level = place.get("price_level")
 
-    if profile.place_style == 'hidden_gems':
-        if any(word in text_blob for word in ['local', 'coffee', 'cafe', 'market', 'garden', 'bookstore', 'neighborhood']):
+    open_now = place.get("open_now")
+    if open_now is False:
+        score -= 35
+    elif open_now is True:
+        score += 8
+
+    name = (place.get("name") or "").lower()
+    address = (place.get("address") or "").lower()
+    text_blob = f"{name} {address}"
+
+    kid_keywords = [
+        "kids", "kid", "children", "childrens", "children's",
+        "play museum", "play street", "play st", "play center",
+        "playground", "indoor play", "family entertainment",
+        "trampoline", "arcade", "toddler", "little explorers",
+        "discovery center", "imagination", "toy museum",
+        "jump", "bounce", "soft play"
+    ]
+
+    shopping_narrow_keywords = [
+        "boutique", "bridal", "women", "womens", "women's",
+        "lashes", "nails", "cosmetics", "makeup", "jewelry"
+    ]
+
+    shopping_general_keywords = [
+        "mall", "market", "shopping center", "outlet", "bookstore",
+        "general store", "plaza", "district", "retail"
+    ]
+
+    if profile.group_type in ("solo", "couple"):
+        if any(word in text_blob for word in [
+            "play museum", "play center", "indoor play", "toddler", "kids", "children"
+        ]):
+            score -= 100
+
+    # place style
+    if profile.place_style == "hidden_gems":
+        if any(word in text_blob for word in [
+            "local", "coffee", "cafe", "market", "garden", "bookstore", "neighborhood"
+        ]):
             score += 12
-        if any(word in text_blob for word in ['visitor center', 'airport', 'mall']):
-            score -= 8     
-    elif profile.place_style == 'tourist_spots':
-        if any(word in text_blob for word in ['museum', 'park', 'historic', 'landmark', 'tower', 'zoo', 'aquarium']):
+        if any(word in text_blob for word in ["visitor center", "airport", "mall"]):
+            score -= 8
+
+    elif profile.place_style == "tourist_spots":
+        if any(word in text_blob for word in [
+            "museum", "park", "historic", "landmark", "tower", "zoo", "aquarium"
+        ]):
             score += 10
 
-    if profile.group_type == 'family':
-        if any(word in text_blob for word in ['park', 'zoo', 'museum', 'garden', 'family', 'aquarium']):
+    # group type
+    if profile.group_type == "family":
+        if any(word in text_blob for word in [
+            "park", "zoo", "museum", "garden", "family", "aquarium"
+        ]):
             score += 12
-        if any(word in text_blob for word in ['bar', 'nightclub', 'lounge']):
+        if any(word in text_blob for word in kid_keywords):
+            score += 14
+        if any(word in text_blob for word in ["bar", "nightclub", "lounge"]):
             score -= 20
-    
-    elif profile.group_type == 'couple':
-        if any(word in text_blob for word in ['scenic', 'garden', 'romantic', 'wine', 'view', 'bistro']):
-            score += 12
+        if interest == 'shopping' and any(word in text_blob for word in shopping_general_keywords):
+            score += 6
 
-    elif profile.group_type == 'friends':
-        if any(word in text_blob for word in ['bar', 'market', 'entertainment', 'social', 'brew', 'nightlife']):
+    elif profile.group_type == "couple":
+        if any(word in text_blob for word in [
+            "scenic", "garden", "romantic", "wine", "view", "bistro"
+        ]):
             score += 12
+        if any(word in text_blob for word in kid_keywords):
+            score -= 18
+        if interest == 'shopping':
+            if any(word in text_blob for word in shopping_general_keywords):
+                score += 8
 
-    elif profile.group_type == 'solo':
-        if any(word in text_blob for word in ['museum', 'coffee', 'park', 'bookstore', 'walk', 'historic']):
+    elif profile.group_type == "friends":
+        if any(word in text_blob for word in [
+            "bar", "market", "entertainment", "social", "brew", "nightlife"
+        ]):
+            score += 12
+        if interest == 'shopping' and any(word in text_blob for word in shopping_general_keywords):
             score += 8
 
-    if profile.food_focus and interest in ('food', 'coffee'):
-        score += 12
+    elif profile.group_type == "solo":
+        child_focused = any(word in text_blob for word in kid_keywords)
 
-    if profile.budget == 'low':
-        if any(word in text_blob for word in ['cafe', 'park', 'market', 'trail', 'historic', 'coffee']):
+        if any(word in text_blob for word in [
+            "museum", "coffee", "park", "bookstore", "walk", "historic"
+        ]) and not child_focused:
             score += 8
-        if any(word in text_blob for word in ['steakhouse', 'luxury', 'resort', 'fine dining']):
+
+        if child_focused:
+            score -= 120
+
+        if interest == "shopping":
+            if any(word in text_blob for word in shopping_general_keywords):
+                score += 10
+            if any(word in text_blob for word in shopping_narrow_keywords):
+                score -= 10
+
+    # food focus
+    if profile.food_focus and interest in ("food", "coffee"):
+        score += 8
+
+    # budget scoring
+    if profile.budget == "low":
+        if isinstance(price_level, int):
+            if price_level <= 1:
+                score += 10
+            elif price_level >= 3:
+                score -= 18
+
+        if any(word in text_blob for word in [
+            "cafe", "park", "market", "trail", "historic", "coffee"
+        ]):
+            score += 8
+        if any(word in text_blob for word in [
+            "steakhouse", "luxury", "resort", "fine dining"
+        ]):
             score -= 12
 
-    elif profile.budget == 'high':
-        if any(word in text_blob for word in ['steakhouse', 'fine dining', 'resort', 'upscale', 'grill']):
+    elif profile.budget == "medium":
+        if isinstance(price_level, int):
+            if price_level == 2:
+                score += 12
+            elif price_level == 1:
+                score += 4
+            elif price_level == 3:
+                score -= 10
+            elif price_level >= 4:
+                score -= 20
+
+        if any(word in text_blob for word in [
+            "fine dining", "luxury", "upscale", "resort"
+        ]):
+            score -= 10
+
+    elif profile.budget == "high":
+        if isinstance(price_level, int):
+            if price_level >= 3:
+                score += 10
+            elif price_level <= 1:
+                score -= 4
+
+        if any(word in text_blob for word in [
+            "steakhouse", "fine dining", "resort", "upscale", "grill"
+        ]):
             score += 10
 
     return score
+
+
+def estimate_visit_minutes(place: dict, interest: str | None = None) -> int:
+    name = (place.get("name") or "").lower()
+    address = (place.get("address") or "").lower()
+    text_blob = f"{name} {address}"
+    interest = (interest or place.get("_interest") or "").lower()
+
+    if any(word in text_blob for word in ["zoo", "theme park", "aquarium", "water park", "amusement"]):
+        return 300  # 5h
+
+    if any(word in text_blob for word in ["museum", "gallery", "science center", "botanical garden"]):
+        return 180  # 3h
+
+    if any(word in text_blob for word in ["park", "garden", "historic", "monument", "trail", "nature"]):
+        return 120  # 2h
+
+    if any(word in text_blob for word in ["mall", "shopping center", "market", "outlet"]):
+        return 150  # 2.5h
+
+    if any(word in text_blob for word in ["restaurant", "bistro", "grill", "steakhouse", "brunch"]):
+        return 90  # 1.5h
+
+    if any(word in text_blob for word in ["coffee", "cafe", "espresso", "bakery"]):
+        return 60  # 1h
+
+    if any(word in text_blob for word in ["bar", "nightclub", "lounge", "brewery"]):
+        return 120  # 2h
+
+    mapping = {
+        "coffee": 60,
+        "food": 90,
+        "museums": 180,
+        "parks": 120,
+        "history": 120,
+        "shopping": 150,
+        "nightlife": 120,
+        "outdoors": 180,
+    }
+    return mapping.get(interest, 90)
+
+
+def is_long_activity(place: dict, interest: str | None = None) -> bool:
+    return estimate_visit_minutes(place, interest) >= 180
+
+def get_day_budget_minutes(profile: Optional[TripProfile] = None) -> int:
+    profile = profile or TripProfile()
+
+    if profile.pace == "relaxed":
+        return 360   # 5h
+    elif profile.pace == "packed":
+        return 660   # 9h
+    return 540       # 7h balanced
+
+
+def minutes_to_hhmm(total_minutes: int) -> str:
+    hours = total_minutes // 60
+    mins = total_minutes % 60
+    return f"{hours:02d}:{mins:02d}"
+
+
+def get_day_start_minutes(profile: Optional[TripProfile] = None) -> int:
+    profile = profile or TripProfile()
+
+    if profile.pace == "relaxed":
+        return 10 * 60
+    elif profile.pace == "packed":
+        return 8 * 60 + 30
+    return 9 * 60
 
 def build_day_time_slots(profile: Optional[TripProfile] = None) -> list[tuple[str, str]]:
     profile = profile or TripProfile()
@@ -1073,21 +1307,359 @@ def build_day_time_slots(profile: Optional[TripProfile] = None) -> list[tuple[st
     if profile.pace == "relaxed":
         return [
             ("10:00", "11:30"),
-            ("13:00", "14:30"),
-            ("16:00", "18:00"),
+            ("13:00", "15:00"),
+            ("17:00", "19:00"),
         ]
     elif profile.pace in ("fast", "packed"):
         return [
-            ("08:30", "10:00"),
+            ("08:30", "09:30"),
             ("10:30", "12:00"),
             ("13:00", "14:30"),
+            ("15:30", "17:00"),
+            ("18:30", "21:00"),
         ]
     else:
         return [
             ("09:00", "10:30"),
             ("12:00", "13:30"),
-            ("15:00", "17:00"),
+            ("15:30", "17:00"),
+            ("18:30", "20:30"),
         ]
+
+
+def get_slot_interest_preferences(profile: Optional[TripProfile], max_stops_per_day: int) -> list[list[str]]:
+    profile = profile or TripProfile()
+
+    evening = ["nightlife", "food", "shopping"]
+    if profile.group_type == "family":
+        evening = ["food", "parks", "museums"]
+    elif profile.group_type == "couple":
+        evening = ["food", "nightlife", "shopping"]
+    elif profile.group_type == "solo":
+        evening = ["food", "history", "nightlife"]
+
+
+    if max_stops_per_day <= 2:
+        return [
+            ["coffee"],
+            ["museums", "parks", "shopping", "history", "food"],
+        ]
+
+    if max_stops_per_day >= 4:
+        return [
+            ["coffee"],
+            ["museums", "history", "parks"],
+            ["shopping", "parks", "museums"],
+            ["food", "shopping", "parks"],
+            evening,
+        ]
+
+    return [
+        ["coffee"],
+        ["museums", "history", "parks", "shopping"],
+        evening,
+    ]
+
+
+def get_place_open_minute(place: dict, day_index: int) -> int | None:
+    weekday_lines = place.get("hours") or []
+    if not weekday_lines:
+        return None
+
+    line = weekday_lines[day_index % len(weekday_lines)]
+    if not line:
+        return None
+
+    if "Closed" in line:
+        return None
+    if "Open 24 hours" in line:
+        return 0
+
+    _, raw_ranges = line.split(":", 1)
+    raw_ranges = raw_ranges.strip()
+
+    first_range = raw_ranges.split(",")[0].strip()
+    parts = re.split(r"\s*[–-]\s*", first_range)
+    if len(parts) != 2:
+        return None
+
+    return parse_clock_to_minutes(parts[0])
+
+
+def get_place_open_close_minutes(place: dict, weekday_index: int) -> tuple[int | None, int | None]:
+    weekday_lines = place.get("hours") or []
+    if not weekday_lines or weekday_index < 0 or weekday_index >= len(weekday_lines):
+        return (None, None)
+
+    line = weekday_lines[weekday_index]
+    if not line:
+        return (None, None)
+
+    if "Closed" in line:
+        return (None, None)
+    if "Open 24 hours" in line:
+        return (0, 24 * 60)
+
+    _, raw_ranges = line.split(":", 1)
+    raw_ranges = raw_ranges.strip()
+
+    first_range = raw_ranges.split(",")[0].strip()
+    parts = re.split(r"\s*[–-]\s*", first_range)
+    if len(parts) != 2:
+        return (None, None)
+
+    open_label = parts[0].strip()
+    close_label = parts[1].strip()
+
+    open_min = parse_clock_to_minutes(open_label)
+    close_min = parse_clock_to_minutes(close_label)
+
+    if open_min is None and close_min is not None:
+        close_has_meridiem = bool(re.search(r"(AM|PM)$", re.sub(r"\s+", "", close_label.upper())))
+        open_has_meridiem = bool(re.search(r"(AM|PM)$", re.sub(r"\s+", "", open_label.upper())))
+
+        if close_has_meridiem and not open_has_meridiem:
+            close_norm = re.sub(r"\s+", "", close_label.upper()).replace(".", "")
+            inferred_meridiem = "PM" if close_norm.endswith("PM") else "AM"
+            open_min = parse_clock_to_minutes(f"{open_label} {inferred_meridiem}")
+
+    if open_min is None or close_min is None:
+        return (None, None)
+
+    if close_min <= open_min:
+        close_min += 24 * 60
+
+    return (open_min, close_min)
+
+def build_balanced_itinerary(
+    grouped_places: dict[str, List[dict]],
+    days: int,
+    profile: Optional[TripProfile] = None,
+    max_stops_per_day: int = 3,
+    start_date:Optional[str] = None,
+) -> List[dict]:
+    profile = profile or TripProfile()
+
+    day_budget = get_day_budget_minutes(profile)
+    day_start = get_day_start_minutes(profile)
+    slot_preferences = get_slot_interest_preferences(profile, max_stops_per_day)
+    time_slots = build_day_time_slots(profile)
+
+    itinerary = [
+        {
+            "day": d,
+            "stops": [],
+            "_used_minutes": 0,
+            "_has_long_activity": False,
+            "_clock": day_start,
+        }
+        for d in range(1, days + 1)
+    ]
+
+    pools: dict[str, List[dict]] = {
+        interest: list(places)
+        for interest, places in grouped_places.items()
+    }
+
+    used_place_ids: set[str] = set()
+
+    def pop_next_from_interest(interest: str) -> Optional[dict]:
+        pool = pools.get(interest, [])
+        while pool:
+            place = pool.pop(0)
+            pid = place.get("place_id")
+            if pid and pid not in used_place_ids:
+                used_place_ids.add(pid)
+                return place
+        return None
+
+    def pop_next_any(exclude_interests: set[str]) -> Optional[dict]:
+        ranked_candidates = []
+        for interest, pool in pools.items():
+            if interest in exclude_interests:
+                continue
+            while pool and pool[0].get("place_id") in used_place_ids:
+                pool.pop(0)
+            if pool:
+                ranked_candidates.append((pool[0].get("_score", 0), interest))
+
+        if not ranked_candidates:
+            for interest, pool in pools.items():
+                while pool and pool[0].get("place_id") in used_place_ids:
+                    pool.pop(0)
+                if pool:
+                    ranked_candidates.append((pool[0].get("_score", 0), interest))
+
+        if not ranked_candidates:
+            return None
+
+        ranked_candidates.sort(reverse=True)
+        _, best_interest = ranked_candidates[0]
+        return pop_next_from_interest(best_interest)
+
+    def can_fit(day_info: dict, place: dict) -> bool:
+        duration = estimate_visit_minutes(place)
+        effective_duration = min(duration,90)
+        long_flag = is_long_activity(place)
+
+        if day_info["_used_minutes"] + effective_duration > day_budget:
+            return False
+
+        if long_flag and day_info["_has_long_activity"]:
+            return False
+
+        return True
+
+    for day_index in range(days):
+        used_interests_today: set[str] = set()
+        weekday_index = get_real_weekday_index(start_date, day_index)
+
+        for slot_index in range(max_stops_per_day):
+            preferred_interests = slot_preferences[min(slot_index, len(slot_preferences) - 1)]
+            chosen = None
+
+            attempts = 0
+            max_attempts = 12
+
+            while attempts < max_attempts and not chosen:
+                attempts += 1
+                candidate = None
+
+                for interest in preferred_interests:
+                    if interest in used_interests_today:
+                        continue
+
+                    possible = pop_next_from_interest(interest)
+                    if not possible:
+                        continue
+
+                    possible["_interest"] = possible.get("_interest") or interest
+
+                    if can_fit(itinerary[day_index], possible):
+                        candidate = possible
+                        break
+                    else:
+                        pid = possible.get("place_id")
+                        if pid:
+                            used_place_ids.discard(pid)
+                        pools.setdefault(interest, []).append(possible)
+
+                if not candidate:
+                    fallback = pop_next_any(used_interests_today)
+                    if fallback and can_fit(itinerary[day_index], fallback):
+                        candidate = fallback
+                    elif fallback:
+                        pid = fallback.get("place_id")
+                        if pid:
+                            used_place_ids.discard(pid)
+                        pools.setdefault(fallback.get("_interest", "other"), []).append(fallback)
+
+                if not candidate:
+                    break
+
+                duration = estimate_visit_minutes(candidate)
+
+                slot_start_hhmm, slot_end_hhmm = time_slots[min(slot_index, len(time_slots) - 1)]
+                slot_start_min = hhmm_to_minutes(slot_start_hhmm)
+
+                start_min = max(itinerary[day_index]["_clock"], slot_start_min)
+
+
+                open_min, close_min = get_place_open_close_minutes(candidate, weekday_index)
+
+                if open_min is None and close_min is None:
+                    print("REJECTED HOURS:", candidate.get("name"), candidate.get("hours"))
+                    pid = candidate.get("place_id")
+                    if pid:
+                        used_place_ids.discard(pid)
+                    pools.setdefault(candidate.get("_interest", "other"), []).append(candidate)
+                    continue
+
+                if open_min is not None and start_min < open_min:
+                    start_min = open_min
+
+                end_min = start_min + duration
+
+                if close_min is not None and end_min > close_min:
+                    adjusted_duration = close_min - start_min
+
+                    minimum_duration_by_interest = {
+                        "coffee": 30,
+                        "food": 45,
+                        "museums": 60,
+                        "parks": 45,
+                        "history": 45,
+                        "shopping": 60,
+                        "nightlife": 45,
+                        "outdoors": 60,
+                    }
+
+                    min_allowed = minimum_duration_by_interest.get(
+                        candidate.get("_interest", "other"),
+                        45
+                    )
+
+                    if adjusted_duration < min_allowed:
+                        pid = candidate.get("place_id")
+                        if pid:
+                            used_place_ids.discard(pid)
+                        pools.setdefault(candidate.get("_interest", "other"), []).append(candidate)
+                        continue
+
+                    end_min = close_min
+
+                if end_min - day_start > day_budget:
+                    pid = candidate.get('place_id')
+                    if pid:
+                        used_place_ids.discard(pid)
+                    pools.setdefault(candidate.get('_interest', 'other'), []).append(candidate)
+                    continue
+    
+                chosen = candidate
+                chosen["_scheduled_start_min"] = start_min
+                chosen["_scheduled_end_min"] = end_min
+                used_interests_today.add(chosen.get("_interest", "other"))
+
+            if not chosen:
+                continue
+
+            duration = estimate_visit_minutes(chosen)
+            start_min = chosen.get("_scheduled_start_min", itinerary[day_index]["_clock"])
+            end_min = chosen.get("_scheduled_end_min", start_min + duration)
+            arrival_hhmm = minutes_to_hhmm(start_min)
+            departure_hhmm = minutes_to_hhmm(end_min)
+
+            itinerary[day_index]["stops"].append({
+                "place_id": chosen.get("place_id"),
+                "name": chosen.get("name"),
+                "address": chosen.get("address") or "",
+                "rating": chosen.get("rating"),
+                "lat": chosen.get("lat"),
+                "lng": chosen.get("lng"),
+                "arrival_time": arrival_hhmm,
+                "departure_time": departure_hhmm,
+                "suggestion_note": (
+                    f"Suggested from {chosen.get('_interest', 'mixed')} results. "
+                    f"Estimated visit time: {duration} min."
+                ),
+            })
+
+            actual_duration = end_min - start_min
+            travel_buffer = 20
+            itinerary[day_index]["_used_minutes"] += actual_duration + travel_buffer
+            itinerary[day_index]["_clock"] = end_min + travel_buffer
+
+            if is_long_activity(chosen):
+                itinerary[day_index]["_has_long_activity"] = True
+
+    for day in itinerary:
+        day.pop("_used_minutes", None)
+        day.pop("_has_long_activity", None)
+        day.pop("_clock", None)
+
+    return itinerary
+
+
 
 def distribute_places_across_days(
     places: List[dict], 
@@ -1122,46 +1694,201 @@ def distribute_places_across_days(
     return itinerary
 
 
+async def fetch_place_details_for_scoring(place_id: str) -> dict:
+    api_key = os.getenv("GOOGLE_MAPS_API_KEY")
+    if not api_key:
+        return {}
+
+    url = "https://maps.googleapis.com/maps/api/place/details/json"
+    params = {
+        "place_id": place_id,
+        "key": api_key,
+        "fields": ",".join([
+            "place_id",
+            "opening_hours",
+            "price_level",
+            "types",
+            "name",
+            "formatted_address",
+        ]),
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            r = await client.get(url, params=params)
+            r.raise_for_status()
+            data = r.json()
+
+        if data.get("status") != "OK":
+            return {}
+
+        result = data.get("result", {}) or {}
+        opening = result.get("opening_hours") or {}
+
+        return {
+            "open_now": opening.get("open_now"),
+            "hours": opening.get("weekday_text", []),
+            "price_level": result.get("price_level"),
+            "types": result.get("types", []),
+        }
+    except Exception:
+        return {}
+
+
 @app.post("/ai/itinerary", response_model=AIItineraryResponse)
 async def ai_itinerary(body: ItineraryRequest):
-    interests = body.interests or ["food", "coffee", "parks"]
     profile = body.profile or TripProfile()
     template_description = body.template_description
 
-    scored_places = []
+    default_interests_by_group = {
+        "solo": ["coffee", "museums", "parks", "history", "shopping", "food"],
+        "couple": ["coffee", "museums", "shopping", "food", "nightlife", "parks"],
+        "friends": ["coffee", "shopping", "parks", "food", "nightlife", "museums"],
+        "family": ["parks", "museums", "shopping", "food", "history"],
+    }
+
+    interests = body.interests or default_interests_by_group.get(
+        profile.group_type,
+        ["coffee", "museums", "parks", "shopping", "food"]
+    )
+
+    grouped_places: dict[str, List[dict]] = {}
+
     for interest in interests:
-        results = await search_places_for_interests(
-            body.destination,
-            interest,
-            profile,
-            template_description,
-        )
-        for place in results: 
+        results = await search_places_for_interests(body.destination, interest, profile)
+        scored = []
+
+        for place in results:
+            details = await fetch_place_details_for_scoring(place.get("place_id"))
+            if details:
+                place.update(details)
             place["_interest"] = interest
-            scored_places.append((score_place(place, interest, profile), place))
-    
-    #deduped = dedupe_places(all_places)
+            place["_score"] = score_place(place,interest,profile)
+            scored.append(place)
 
-    best_by_place_id: dict[str, tuple[float, dict]] = {}
-    for score, place in scored_places:
-        place_id = place.get('place_id')
-        if not place_id:
-            continue
-        place['_score'] = score
-        current = best_by_place_id.get(place_id)
-        if current is None or score > current[0]:
-            best_by_place_id[place_id] = (score, place)
-    ranked_places = [item[1] for item in sorted(best_by_place_id.values(), key=lambda x: x[0], reverse=True)]
 
-    max_stops_per_day = 3
-    if profile.pace =='relaxed':
-        max_stops_per_day = 2
-    elif profile.pace == 'packed':
-        max_stops_per_day = 4
-    itinerary = distribute_places_across_days(ranked_places, body.days, max_stops_per_day=max_stops_per_day)
-    
+        seen = set()
+        ranked = []
+        for place in sorted(scored, key=lambda p: p["_score"], reverse=True):
+            pid = place.get("place_id")
+            if not pid or pid in seen:
+                continue
+            seen.add(pid)
+            ranked.append(place)
+
+        grouped_places[interest] = ranked
+
+    max_stops_per_day = 4
+    if profile.pace == "relaxed":
+        max_stops_per_day = 3
+    elif profile.pace == "packed":
+        max_stops_per_day = 5
+
+    itinerary = build_balanced_itinerary(
+        grouped_places=grouped_places,
+        days=body.days,
+        profile=profile,
+        max_stops_per_day=max_stops_per_day,
+        start_date = body.start_date,
+    )
+
     return {
         "destination": body.destination,
         "days": body.days,
         "itinerary": itinerary,
     }
+
+
+
+def hhmm_to_minutes(hhmm:str) -> int:
+    h,m = hhmm.split(":")
+    return int(h) * 60 + int(m)
+
+def parse_clock_to_minutes(label: str) -> int | None:
+    if not label:
+        return None
+
+    s = str(label).upper().strip()
+
+    s = re.sub(r"\s+", "", s)
+
+    s = s.replace(".", "")
+
+    m = re.match(r"^(\d{1,2}):(\d{2})(AM|PM)$", s)
+    if not m:
+        return None
+
+    hour = int(m.group(1))
+    minute = int(m.group(2))
+    meridiem = m.group(3)
+
+    if hour == 12:
+        hour = 0
+    if meridiem == "PM":
+        hour += 12
+
+    return hour * 60 + minute
+
+
+def is_place_open_for_time(place: dict, day_index: int, arrival_hhmm: str, departure_hhmm: str | None = None) -> bool:
+    weekday_lines = place.get("hours") or []
+    if not weekday_lines:
+        return True 
+
+    line = weekday_lines[day_index % len(weekday_lines)] if weekday_lines else None
+    if not line:
+        return True
+
+    if "Closed" in line:
+        return False
+
+    if "Open 24 hours" in line:
+        return True
+
+    _, raw_ranges = line.split(":", 1)
+    raw_ranges = raw_ranges.strip()
+
+    arrival_min = hhmm_to_minutes(arrival_hhmm)
+    departure_min = hhmm_to_minutes(departure_hhmm) if departure_hhmm else arrival_min
+
+    ranges = [r.strip() for r in raw_ranges.split(",") if r.strip()]
+    for r in ranges:
+        parts = re.split(r"\s*[–-]\s*", r)
+        if len(parts) != 2:
+            continue
+
+        start_min = parse_clock_to_minutes(parts[0])
+        end_min = parse_clock_to_minutes(parts[1])
+        if start_min is None or end_min is None:
+            continue
+
+        # handle overnight close like 10:00 PM - 2:00 AM
+        if end_min <= start_min:
+            if arrival_min >= start_min or departure_min <= end_min:
+                return True
+        else:
+            if arrival_min >= start_min and departure_min <= end_min:
+                return True
+
+    return False
+        
+
+"""
+#AI assistant
+@app.post("/ai/itinerary")
+async def ai_itinerary(body: ItineraryRequest):
+    itinerary = []
+    for d in range(1, body.days + 1):
+        itinerary.append({
+            "day": d,
+            "theme": " / ".join(body.interests) if body.interests else "General",
+            "plan": [
+                {"time": "09:00", "activity": f"Explore top sights in {body.destination}"},
+                {"time": "13:00", "activity": "Lunch at a popular spot"},
+                {"time": "15:00", "activity": "Something aligned with interests"},
+                {"time": "19:00", "activity": "Dinner + evening walk"},
+            ],
+        })
+    return {"destination": body.destination, "days": body.days, "itinerary": itinerary, "note": "AI stub"}
+'''
+"""
