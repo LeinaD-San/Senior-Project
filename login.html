@@ -166,7 +166,10 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
-      const data = await res.json().catch(() => ({}));
+      const raw = await res.text();
+      const data = (() => {
+        try { return JSON.parse(raw); } catch { return {}; }
+      })();
 
       if (!res.ok) {
         const errorEl = document.getElementById('error');
