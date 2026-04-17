@@ -5,7 +5,7 @@ import hmac
 import secrets
 
 from fastapi import FastAPI, Depends, HTTPException, Header, Query
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
 from typing import List, Annotated, Optional
 import os
@@ -32,6 +32,16 @@ load_dotenv()
 openai_client = OpenAI()
 
 app = FastAPI(title="Travel Agent API")
+
+
+@app.exception_handler(OperationalError)
+def sqlalchemy_operational_error_handler(request, exc):
+    return JSONResponse(
+        status_code=503,
+        content={
+            "detail": "Database unavailable. Start Postgres with `docker compose up -d` and verify `DATABASE_URL`.",
+        },
+    )
 
 
 @app.get("/config/maps")
@@ -922,7 +932,12 @@ INTEREST_QUERY_MAP = {
     "history": "historic sites",
 }
 
-def build_interest_query(destination: str, interest: str, profile: Optional[TripProfile]) -> str:
+def build_interest_query(
+    destination: str,
+    interest: str,
+    profile: Optional[TripProfile],
+    template_description: Optional[str],
+) -> str:
     search_term = INTEREST_QUERY_MAP.get(interest, interest)
     profile = profile or TripProfile()
 
@@ -963,12 +978,17 @@ def build_interest_query(destination: str, interest: str, profile: Optional[Trip
     return f"{search_term} in {destination}"
 
 #will give us real place candidates from google. 
-async def search_places_for_interests(destination: str, interest:str, profile: Optional[TripProfile]=None) -> List[dict]:
+async def search_places_for_interests(
+    destination: str,
+    interest: str,
+    profile: Optional[TripProfile] = None,
+    template_description: Optional[str] = None,
+) -> List[dict]:
     api_key = os.getenv("GOOGLE_MAPS_API_KEY")
     if not api_key:
         raise HTTPException(status_code=500, detail="GOOGLE_MAPS_API_KEY is not set")
 
-    query = build_interest_query(destination, interest, profile)
+    query = build_interest_query(destination, interest, profile, template_description)
 
     url = "https://maps.googleapis.com/maps/api/place/textsearch/json"
     params = {"query": query, "key": api_key}
@@ -1718,6 +1738,7 @@ async def fetch_place_details_for_scoring(place_id: str) -> dict:
 @app.post("/ai/itinerary", response_model=AIItineraryResponse)
 async def ai_itinerary(body: ItineraryRequest):
     profile = body.profile or TripProfile()
+    template_description = body.template_description
 
     default_interests_by_group = {
         "solo": ["coffee", "museums", "parks", "history", "shopping", "food"],

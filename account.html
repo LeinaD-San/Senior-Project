@@ -70,6 +70,44 @@
       color:rgba(11,18,32,.8);
     }
 
+    .field{
+      width:100%;
+      padding:12px 12px;
+      border-radius:14px;
+      border:1px solid var(--border);
+      font-size:14px;
+      outline:none;
+      background:white;
+    }
+
+    .suggestWrap{position:relative;flex:1;min-width:220px;}
+    .suggestList{
+      position:absolute;
+      top:calc(100% + 6px);
+      left:0;
+      right:0;
+      background:white;
+      border:1px solid rgba(11,18,32,.12);
+      border-radius:14px;
+      box-shadow:0 16px 40px rgba(11,18,32,.12);
+      z-index:50;
+      max-height:260px;
+      overflow:auto;
+    }
+    .suggestItem{padding:10px 12px;cursor:pointer;border-bottom:1px solid rgba(11,18,32,.06);}
+    .suggestItem:last-child{border-bottom:none}
+    .suggestItem:hover{background:rgba(11,18,32,.04)}
+    .suggestMain{font-weight:900;font-size:14px}
+    .suggestSub{color:var(--muted);font-size:12px;margin-top:2px}
+    .hidden{display:none}
+
+    .toggleRow{display:flex;align-items:center;gap:8px;color:var(--muted);font-weight:800;font-size:12px;margin-top:10px}
+    .templateGrid{display:grid;grid-template-columns:1fr;gap:10px;margin-top:10px}
+    .templateCard{border:1px solid var(--border);background:white;border-radius:14px;padding:12px;display:flex;gap:12px;align-items:center}
+    .templateMeta{flex:1;min-width:0}
+    .templateTitle{font-weight:900}
+    .templateDesc{margin-top:2px;color:var(--muted);font-size:12px;line-height:1.35}
+
     .primary{
       width:100%;
       border:none;
@@ -128,11 +166,64 @@
           <button class="secondary" type="button" onclick="goPlanner()">Planner</button>
           <button class="primary" type="button" onclick="goCreateTrip()">New Trip</button>
         </div>
+
+        <div style="margin-top:16px">
+          <div class="title">Templates</div>
+          <div class="sub">Pick a destination, then start a preset plan.</div>
+
+          <div style="margin-top:10px;display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+            <div class="suggestWrap">
+              <input id="templateDest" class="field" type="text" placeholder="Destination (city, state)" maxlength="120" autocomplete="off" />
+              <div id="templateSuggestions" class="suggestList hidden"></div>
+            </div>
+            <button class="secondary" type="button" style="width:auto" onclick="clearTemplateDest()">Clear</button>
+          </div>
+
+          <label class="toggleRow">
+            <input id="templateAutogen" type="checkbox" checked />
+            Auto-generate now
+          </label>
+
+          <div class="templateGrid">
+            <div id="templateList"></div>
+          </div>
+
+          <div style="margin-top:12px">
+            <button class="secondary" type="button" style="width:auto" onclick="toggleNewTemplate()">New template</button>
+          </div>
+
+          <div id="newTemplateWrap" class="hidden" style="margin-top:12px; border:1px solid var(--border); background:white; border-radius:14px; padding:12px;">
+            <div style="font-weight:900">Create template</div>
+            <div class="sub">Give the AI a short description of the vibe.</div>
+            <div style="margin-top:10px;display:flex;flex-direction:column;gap:10px">
+              <input id="newTplName" class="field" type="text" placeholder="Template name (ex: Coffee Crawl)" maxlength="60" />
+              <textarea id="newTplDesc" class="field" rows="3" placeholder="Description for AI (ex: family-friendly, stroller accessible, low budget, short drives)" maxlength="400" style="resize:vertical"></textarea>
+              <div style="display:flex;gap:10px;flex-wrap:wrap">
+                <input id="newTplDays" class="field" type="number" min="1" max="7" placeholder="Days (optional)" style="max-width:160px" />
+                <input id="newTplInterests" class="field" type="text" placeholder="Interests (optional, comma separated)" maxlength="120" />
+              </div>
+              <div style="display:flex;gap:10px">
+                <button class="primary" type="button" style="width:auto" onclick="saveNewTemplate()">Save</button>
+                <button class="secondary" type="button" style="width:auto" onclick="toggleNewTemplate(false)">Cancel</button>
+              </div>
+              <div id="newTplError" class="sub" style="color:#b91c1c; font-weight:900"></div>
+            </div>
+          </div>
+        </div>
+
       </div>
 
       <div class="card">
         <div class="title">Saved Trips</div>
         <div class="sub">Open a trip to keep planning, or delete old ones.</div>
+        <div id="continueWrap" class="hidden" style="margin-top:12px; margin-bottom:12px; border:1px solid var(--border); background:white; border-radius:14px; padding:12px;">
+          <div class="title" id="continueTitle">Continue</div>
+          <div class="sub">Jump back into your most recent trip.</div>
+          <div style="margin-top:10px;display:flex;gap:10px">
+            <button class="primary" type="button" style="width:auto" onclick="continueLastTrip()">Continue last trip</button>
+            <button class="secondary" type="button" style="width:auto" onclick="forgetLastTrip()">Forget</button>
+          </div>
+        </div>
         <div class="list" id="tripsList"></div>
       </div>
     </div>
@@ -197,6 +288,322 @@
 
     function goCreateTrip() {
       window.location.href = '/planner';
+    }
+
+    function getLastTripId() {
+      const raw = localStorage.getItem('tragent_last_trip_id');
+      const id = Number(raw);
+      if (!Number.isFinite(id) || id <= 0) return null;
+      return id;
+    }
+
+    function getLastTripTitle() {
+      return (localStorage.getItem('tragent_last_trip_title') || '').trim().slice(0, 200);
+    }
+
+    function updateContinueUi() {
+      const wrap = document.getElementById('continueWrap');
+      const id = getLastTripId();
+      if (!id) wrap.classList.add('hidden');
+      else wrap.classList.remove('hidden');
+
+      const titleEl = document.getElementById('continueTitle');
+      if (titleEl && id) {
+        const title = getLastTripTitle();
+        titleEl.textContent = title ? `Continue: ${title}` : `Continue: Trip ${id}`;
+      }
+    }
+
+    function forgetLastTrip() {
+      localStorage.removeItem('tragent_last_trip_id');
+      localStorage.removeItem('tragent_last_trip_title');
+      updateContinueUi();
+    }
+
+    function continueLastTrip() {
+      const id = getLastTripId();
+      if (!id) return;
+      window.location.href = `/planner?trip_id=${encodeURIComponent(id)}`;
+    }
+
+    function clearTemplateDest() {
+      const input = document.getElementById('templateDest');
+      input.value = '';
+      hideSuggestionList(document.getElementById('templateSuggestions'));
+      input.focus();
+    }
+
+    function readTemplateDest() {
+      return (document.getElementById('templateDest').value || '').trim().slice(0, 120);
+    }
+
+    function templateAutogenOn() {
+      return !!document.getElementById('templateAutogen').checked;
+    }
+
+    const BUILTIN_TEMPLATES = {
+      family_day: {
+        id: 'family_day',
+        name: 'Family Day',
+        description: 'Family-friendly day with short travel, parks, and kid-friendly food options.',
+        summary: '1 day · family · food + parks + museums',
+        days: '1',
+        interests: 'food,parks,museums',
+        profile: {
+          group_type: 'family',
+          pace: 'balanced',
+          budget: 'medium',
+          place_style: 'mix',
+          food_focus: 'true',
+        },
+      },
+    };
+
+    function readCustomTemplates() {
+      const raw = localStorage.getItem('tragent_custom_templates');
+      if (!raw) return [];
+      try {
+        const data = JSON.parse(raw);
+        if (!Array.isArray(data)) return [];
+        return data;
+      } catch {
+        return [];
+      }
+    }
+
+    function writeCustomTemplates(items) {
+      localStorage.setItem('tragent_custom_templates', JSON.stringify(items || []));
+    }
+
+    function getAllTemplates() {
+      const custom = readCustomTemplates();
+      const map = { ...BUILTIN_TEMPLATES };
+      custom.forEach((t) => {
+        if (t && t.id) map[t.id] = t;
+      });
+      return map;
+    }
+
+    function setActiveTemplate(template) {
+      localStorage.setItem('tragent_active_template', JSON.stringify(template));
+    }
+
+    function renderTemplates() {
+      const root = document.getElementById('templateList');
+      if (!root) return;
+      const templates = Object.values(getAllTemplates());
+      root.innerHTML = '';
+
+      templates.forEach((tpl) => {
+        const row = document.createElement('div');
+        row.className = 'templateCard';
+        const isCustom = String(tpl.id || '').startsWith('c_');
+        row.innerHTML = `
+          <div class="templateMeta">
+            <div class="templateTitle">${escapeHtml(tpl.name || 'Template')}</div>
+            <div class="templateDesc">${escapeHtml(tpl.summary || '')}</div>
+          </div>
+          <button class="primary" type="button" style="width:auto">Start</button>
+          ${isCustom ? '<button class="btn danger" type="button">Delete</button>' : ''}
+        `;
+
+        const buttons = row.querySelectorAll('button');
+        const startBtn = buttons[0];
+        startBtn.addEventListener('click', () => startTemplate(tpl.id));
+
+        if (isCustom) {
+          const deleteBtn = buttons[1];
+          deleteBtn.addEventListener('click', () => deleteTemplate(tpl.id));
+        }
+
+        root.appendChild(row);
+      });
+    }
+
+    function deleteTemplate(templateId) {
+      const templates = readCustomTemplates();
+      const next = templates.filter((t) => t?.id !== templateId);
+      writeCustomTemplates(next);
+      renderTemplates();
+    }
+
+    function toggleNewTemplate(force) {
+      const wrap = document.getElementById('newTemplateWrap');
+      const error = document.getElementById('newTplError');
+      if (error) error.textContent = '';
+      const nextShow = typeof force === 'boolean' ? force : wrap.classList.contains('hidden');
+      wrap.classList.toggle('hidden', !nextShow);
+      if (nextShow) {
+        const nameEl = document.getElementById('newTplName');
+        if (nameEl) nameEl.focus();
+      }
+    }
+
+    function saveNewTemplate() {
+      const name = (document.getElementById('newTplName').value || '').trim().slice(0, 60);
+      const description = (document.getElementById('newTplDesc').value || '').trim().slice(0, 400);
+      const daysRaw = (document.getElementById('newTplDays').value || '').trim();
+      const interests = (document.getElementById('newTplInterests').value || '').trim().slice(0, 120);
+      const errorEl = document.getElementById('newTplError');
+      if (errorEl) errorEl.textContent = '';
+
+      if (!name) {
+        if (errorEl) errorEl.textContent = 'Template name is required.';
+        return;
+      }
+      if (!description) {
+        if (errorEl) errorEl.textContent = 'Template description is required.';
+        return;
+      }
+
+      let days = null;
+      if (daysRaw) {
+        const n = Number(daysRaw);
+        if (!Number.isFinite(n) || n < 1 || n > 7) {
+          if (errorEl) errorEl.textContent = 'Days must be between 1 and 7.';
+          return;
+        }
+        days = String(Math.floor(n));
+      }
+
+      const id = `c_${Date.now()}`;
+      const tpl = {
+        id,
+        name,
+        description,
+        summary: `${days ? `${days} day${days === '1' ? '' : 's'} · ` : ''}${interests ? interests : 'custom'}`,
+        days,
+        interests,
+        profile: {
+          group_type: 'solo',
+          pace: 'balanced',
+          budget: 'medium',
+          place_style: 'mix',
+          food_focus: 'true',
+        },
+      };
+
+      const templates = readCustomTemplates();
+      templates.unshift(tpl);
+      writeCustomTemplates(templates);
+
+      document.getElementById('newTplName').value = '';
+      document.getElementById('newTplDesc').value = '';
+      document.getElementById('newTplDays').value = '';
+      document.getElementById('newTplInterests').value = '';
+      toggleNewTemplate(false);
+      renderTemplates();
+    }
+
+    function startTemplate(templateId) {
+      const dest = readTemplateDest();
+      if (!dest) {
+        document.getElementById('templateDest').focus();
+        return;
+      }
+
+      const tpl = getAllTemplates()[templateId];
+      if (!tpl) return;
+
+      const params = new URLSearchParams();
+      params.set('dest', dest);
+      if (tpl.days) params.set('days', tpl.days);
+      if (tpl.interests) params.set('interests', tpl.interests);
+      if (tpl.profile?.group_type) params.set('group_type', tpl.profile.group_type);
+      if (tpl.profile?.pace) params.set('pace', tpl.profile.pace);
+      if (tpl.profile?.budget) params.set('budget', tpl.profile.budget);
+      if (tpl.profile?.place_style) params.set('place_style', tpl.profile.place_style);
+      if (tpl.profile?.food_focus) params.set('food_focus', tpl.profile.food_focus);
+      if (templateAutogenOn()) params.set('autogen', '1');
+      params.set('template_id', tpl.id);
+
+      setActiveTemplate({
+        id: tpl.id,
+        name: tpl.name || '',
+        description: tpl.description || '',
+      });
+
+      window.location.href = `/planner?${params.toString()}`;
+    }
+
+    let templateSuggestTimer = null;
+
+    async function fetchAutocomplete(input, opts = {}) {
+      const params = new URLSearchParams();
+      params.set('input', input);
+      if (opts.types) params.set('types', opts.types);
+      const res = await fetch(`/places/autocomplete?${params.toString()}`);
+      if (!res.ok) return [];
+      const data = await res.json().catch(() => ({}));
+      return data.predictions || [];
+    }
+
+    function renderSuggestionList(container, items, onPick) {
+      if (!container) return;
+      container.innerHTML = '';
+      if (!items.length) {
+        container.classList.add('hidden');
+        return;
+      }
+
+      items.forEach((item) => {
+        const row = document.createElement('div');
+        row.className = 'suggestItem';
+        row.innerHTML = `
+          <div class="suggestMain">${escapeHtml(item.main_text || item.description || '')}</div>
+          <div class="suggestSub">${escapeHtml(item.secondary_text || '')}</div>
+        `;
+        row.addEventListener('pointerdown', (e) => {
+          e.preventDefault();
+          onPick(item);
+        });
+        row.addEventListener('click', () => onPick(item));
+        container.appendChild(row);
+      });
+
+      container.classList.remove('hidden');
+    }
+
+    function hideSuggestionList(container) {
+      if (!container) return;
+      container.classList.add('hidden');
+    }
+
+    function cleanCityLabel(text) {
+      return String(text || '').replace(/, USA$/, '');
+    }
+
+    function setupTemplateAutocomplete() {
+      const input = document.getElementById('templateDest');
+      const list = document.getElementById('templateSuggestions');
+      if (!input || !list) return;
+
+      input.addEventListener('input', () => {
+        clearTimeout(templateSuggestTimer);
+        const value = input.value.trim().slice(0, 120);
+
+        if (value.length < 2) {
+          hideSuggestionList(list);
+          return;
+        }
+
+        templateSuggestTimer = setTimeout(async () => {
+          const predictions = await fetchAutocomplete(value, { types: '(cities)' });
+          renderSuggestionList(list, predictions, (item) => {
+            input.value = cleanCityLabel(item.description || item.main_text || '');
+            hideSuggestionList(list);
+          });
+        }, 250);
+      });
+
+      input.addEventListener('blur', () => {
+        setTimeout(() => hideSuggestionList(list), 150);
+      });
+
+      input.addEventListener('focus', () => {
+        const value = input.value.trim();
+        if (value.length >= 2) input.dispatchEvent(new Event('input'));
+      });
     }
 
     function renderSignedOut() {
@@ -264,6 +671,10 @@
     async function init() {
       const token = getToken();
       setSignedInUi(!!token);
+
+      updateContinueUi();
+      setupTemplateAutocomplete();
+      renderTemplates();
 
       if (!token) {
         renderSignedOut();
