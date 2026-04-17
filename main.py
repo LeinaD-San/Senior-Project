@@ -1290,7 +1290,7 @@ def build_day_time_slots(profile: Optional[TripProfile] = None) -> list[tuple[st
             ("13:00", "15:00"),
             ("17:00", "19:00"),
         ]
-    elif profile.pace == "packed":
+    elif profile.pace in ("fast", "packed"):
         return [
             ("08:30", "09:30"),
             ("10:30", "12:00"),
