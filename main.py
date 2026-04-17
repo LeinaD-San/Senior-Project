@@ -1078,7 +1078,7 @@ def score_place(place: dict, interest: str, profile: Optional[TripProfile]) -> f
         "playground", "indoor play", "family entertainment",
         "trampoline", "arcade", "toddler", "little explorers",
         "discovery center", "imagination", "toy museum",
-        "jump", "bounce", "soft play"
+        "jump", "bounce", "soft play" ,"Play Street Museum"
     ]
 
     shopping_narrow_keywords = [
