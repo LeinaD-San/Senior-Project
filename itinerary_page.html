@@ -766,6 +766,42 @@
     ];
 
     const selectedInterests = new Set();
+
+    function initEnterShortcuts() {
+      const landingSearch = document.getElementById('landing-search');
+      if (landingSearch) {
+        landingSearch.addEventListener('keydown', (e) => {
+          if (e.key !== 'Enter') return;
+          e.preventDefault();
+          handleSearch(e);
+        });
+      }
+
+      const destinationInput = document.getElementById('dest');
+      if (destinationInput) {
+        destinationInput.addEventListener('keydown', (e) => {
+          if (e.key !== 'Enter') return;
+          e.preventDefault();
+          goToPlannerWithProfile();
+        });
+      }
+
+      const groupSelects = [
+        'profile-group-type',
+        'profile-pace',
+        'profile-budget',
+        'profile-place-style',
+        'profile-food-focus',
+      ].map((id) => document.getElementById(id)).filter(Boolean);
+
+      groupSelects.forEach((el) => {
+        el.addEventListener('keydown', (e) => {
+          if (e.key !== 'Enter') return;
+          e.preventDefault();
+          savePersonalizationAndContinue();
+        });
+      });
+    }
 //revolving word function
     function startRotatingWord() {
       const el = document.getElementById('rotating-word');
@@ -789,6 +825,8 @@
         }, 220);
       }, 1350);
     }
+
+    initEnterShortcuts();
 
     // Build interest chips
     const chipGrid = document.getElementById('chip-grid');
