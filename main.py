@@ -21,7 +21,10 @@ from sqlalchemy import text
 from pathlib import Path
 
 import json
-from openai import OpenAI
+try:
+    from openai import OpenAI
+except Exception:
+    OpenAI = None
 
 import re
 
@@ -33,7 +36,7 @@ BASE_DIR = Path(__file__).resolve().parent
 
 load_dotenv()
 
-openai_client = OpenAI()
+openai_client = OpenAI() if OpenAI and os.getenv("OPENAI_API_KEY") else None
 
 app = FastAPI(title="Travel Agent API")
 
@@ -232,6 +235,8 @@ def health():
 
 @app.get("/ai/test")
 def ai_test():
+    if not openai_client:
+        raise HTTPException(status_code=503, detail="AI not configured")
     try: 
         response = openai_client.responses.create(
             model= "gpt-5-mini",

@@ -358,6 +358,50 @@
     }
     @keyframes spin{to{transform:rotate(360deg)}}
 
+    .aiOverlay{
+      position:fixed;
+      inset:0;
+      z-index:9000;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      background:rgba(11,18,32,.34);
+      backdrop-filter: blur(2px);
+      padding:18px;
+    }
+    .aiOverlayCard{
+      display:flex;
+      align-items:center;
+      gap:12px;
+      width:min(520px, 100%);
+      background:rgba(255,255,255,.92);
+      border:1px solid rgba(11,18,32,.12);
+      border-radius:16px;
+      box-shadow:0 18px 48px rgba(11,18,32,.22);
+      padding:16px 16px;
+    }
+    .aiSpinner{
+      width:22px;
+      height:22px;
+      border:3px solid rgba(11,18,32,.16);
+      border-top-color:var(--orange);
+      border-radius:50%;
+      animation:spin .7s linear infinite;
+      flex:0 0 auto;
+    }
+    .aiOverlayTitle{
+      font-weight:900;
+      color:var(--ink);
+      font-size:14px;
+      line-height:1.2;
+    }
+    .aiOverlaySub{
+      margin-top:3px;
+      color:var(--muted);
+      font-size:12px;
+      line-height:1.25;
+    }
+
     /* modal carousel */
     .modalCarousel{
       position:relative;
@@ -587,8 +631,59 @@
     </div>
   </div>
 
+  <div id="aiOverlay" class="aiOverlay hidden" role="status" aria-live="polite" aria-label="AI loading">
+    <div class="aiOverlayCard">
+      <div class="aiSpinner" aria-hidden="true"></div>
+      <div>
+        <div id="aiOverlayTitle" class="aiOverlayTitle">Working…</div>
+        <div id="aiOverlaySubtitle" class="aiOverlaySub">This may take a few seconds.</div>
+      </div>
+    </div>
+  </div>
+
   <script>
     const API_BASE = '';
+
+    let aiLoadingCount = 0;
+
+    function setAiOverlayVisible(visible) {
+      const overlay = document.getElementById('aiOverlay');
+      if (!overlay) return;
+      overlay.classList.toggle('hidden', !visible);
+      if (visible) {
+        document.body.style.cursor = 'wait';
+        document.body.setAttribute('aria-busy', 'true');
+      } else {
+        document.body.style.cursor = '';
+        document.body.removeAttribute('aria-busy');
+      }
+    }
+
+    function setAiOverlayTitle(title) {
+      const titleEl = document.getElementById('aiOverlayTitle');
+      if (!titleEl) return;
+      titleEl.textContent = title || 'Working…';
+    }
+
+    function beginAiLoading(title) {
+      aiLoadingCount += 1;
+      if (title) setAiOverlayTitle(title);
+      setAiOverlayVisible(true);
+    }
+
+    function endAiLoading() {
+      aiLoadingCount = Math.max(0, aiLoadingCount - 1);
+      if (aiLoadingCount === 0) setAiOverlayVisible(false);
+    }
+
+    async function withAiLoading(title, fn) {
+      beginAiLoading(title);
+      try {
+        return await fn();
+      } finally {
+        endAiLoading();
+      }
+    }
 
     function goToAccount() {
       window.location.href = `/account?next=${encodeURIComponent(currentNextUrl())}`;
@@ -1485,7 +1580,7 @@
       }
     }
 
-   async function replaceFromTrip(placeId, idx) {
+    async function replaceFromTrip(placeId, idx) {
     const dayItems = tripState.itemsByDay[tripState.activeDay] || [];
     const currentItem = dayItems[idx];
     if (!currentItem) {
@@ -1509,39 +1604,41 @@
     else if (blob.includes("historic") || blob.includes("history")) inferredInterest = "history";
 
     try {
-      const res = await fetch(`/ai/replace-stop`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          destination: tripState.destination,
-          interest: inferredInterest,
-          exclude_place_ids: excludePlaceIds,
-          profile: tripState.profile || null
-        }),
+      await withAiLoading('Finding a replacement…', async () => {
+        const res = await fetch(`/ai/replace-stop`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            destination: tripState.destination,
+            interest: inferredInterest,
+            exclude_place_ids: excludePlaceIds,
+            profile: tripState.profile || null
+          }),
+        });
+
+        const data = await res.json().catch(() => ({}));
+
+        if (!res.ok) {
+          uiNotify("Replace stop", data.detail || "Could not find another place right now.");
+          return;
+        }
+
+        const replacement = {
+          ...currentItem,
+          place_id: data.place_id,
+          name: data.name,
+          address: data.address || "",
+          rating: data.rating || null,
+          lat: data.lat || null,
+          lng: data.lng || null,
+        };
+
+        dayItems[idx] = replacement;
+        renderItinerary();
+        renderResults(lastResults);
+
+        uiNotify("Replace stop", "Stop replaced.");
       });
-
-      const data = await res.json().catch(() => ({}));
-
-      if (!res.ok) {
-        uiNotify("Replace stop", data.detail || "Could not find another place right now.");
-        return;
-      }
-
-      const replacement = {
-        ...currentItem,
-        place_id: data.place_id,
-        name: data.name,
-        address: data.address || "",
-        rating: data.rating || null,
-        lat: data.lat || null,
-        lng: data.lng || null,
-      };
-
-      dayItems[idx] = replacement;
-      renderItinerary();
-      renderResults(lastResults);
-
-      uiNotify("Replace stop", "Stop replaced.");
     } catch (err) {
       uiNotify("Replace stop", "Could not find another place right now.");
     }
@@ -1905,58 +2002,60 @@
         .filter(Boolean);
 
       try {
-        console.log('ABOUT TO CALL /ai/itinerary');
+        await withAiLoading('Generating itinerary…', async () => {
+          console.log('ABOUT TO CALL /ai/itinerary');
 
-        const res = await fetch('/ai/itinerary', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            destination: destination,
-            days: tripState.days,
-            interests: interests,
-            profile: personalizationProfile,
-            start_date: getTodayIsoDate(),
-          }),
+          const res = await fetch('/ai/itinerary', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              destination: destination,
+              days: tripState.days,
+              interests: interests,
+              profile: personalizationProfile,
+              start_date: getTodayIsoDate(),
+            }),
+          });
+
+          const data = await res.json().catch(() => ({}));
+          console.log('AI STATUS:', res.status, data);
+
+          if (!res.ok) {
+            throw new Error(data.detail || 'AI itinerary request failed');
+          }
+
+          const nextItemsByDay = {};
+          for (let d = 1; d <= tripState.days; d++) nextItemsByDay[d] = [];
+
+          const returnedDays = data.itinerary || [];
+          returnedDays.forEach((dayInfo) => {
+            const day = dayInfo.day;
+            if (!nextItemsByDay[day]) nextItemsByDay[day] = [];
+
+            const places = dayInfo.stops || dayInfo.places || [];
+            nextItemsByDay[day] = places.map((place, idx) => ({
+              place_id: place.place_id,
+              name: place.name,
+              address: place.address || '',
+              rating: place.rating || null,
+              lat: place.lat || null,
+              lng: place.lng || null,
+              notes: '',
+              completed: false,
+              position: idx + 1,
+              arrival_time: place.arrival_time || null,
+              departure_time: place.departure_time || null,
+            }));
+          });
+
+          tripState.destination = destination;
+          tripState.itemsByDay = nextItemsByDay;
+          tripState.activeDay = 1;
+
+          initDays();
+          renderDays();
+          renderItinerary();
         });
-
-        const data = await res.json().catch(() => ({}));
-        console.log('AI STATUS:', res.status, data);
-
-        if (!res.ok) {
-          throw new Error(data.detail || 'AI itinerary request failed');
-        }
-
-        const nextItemsByDay = {};
-        for (let d = 1; d <= tripState.days; d++) nextItemsByDay[d] = [];
-
-        const returnedDays = data.itinerary || [];
-        returnedDays.forEach((dayInfo) => {
-          const day = dayInfo.day;
-          if (!nextItemsByDay[day]) nextItemsByDay[day] = [];
-
-          const places = dayInfo.stops || dayInfo.places || [];
-          nextItemsByDay[day] = places.map((place, idx) => ({
-            place_id: place.place_id,
-            name: place.name,
-            address: place.address || '',
-            rating: place.rating || null,
-            lat: place.lat || null,
-            lng: place.lng || null,
-            notes: '',
-            completed: false,
-            position: idx + 1,
-            arrival_time: place.arrival_time || null,
-            departure_time: place.departure_time || null,
-          }));
-        });
-
-        tripState.destination = destination;
-        tripState.itemsByDay = nextItemsByDay;
-        tripState.activeDay = 1;
-
-        initDays();
-        renderDays();
-        renderItinerary();
 
         uiNotify('AI itinerary', 'AI itinerary generated!');
       } catch (err) {
