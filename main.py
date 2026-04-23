@@ -86,8 +86,17 @@ def on_startup():
             conn.execute(text("ALTER TABLE trip_item ADD COLUMN IF NOT EXISTS arrival_time VARCHAR"))
             conn.execute(text("ALTER TABLE trip_item ADD COLUMN IF NOT EXISTS departure_time VARCHAR"))
             
-            #temporarily commenting these out until the database issue is fixed where user is not being read
+            #This allows the existing postgres table gain the new columns without manually rebuilding the database
             conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS name VARCHAR"))
+            conn.execute(text("ALTER TABLE trips ADD COLUMN IF NOT EXISTS days INTEGER DEFAULT 1"))
+            conn.execute(text("ALTER TABLE trips ADD COLUMN IF NOT EXISTS group_type VARCHAR DEFAULT 'solo'"))
+            conn.execute(text("ALTER TABLE trips ADD COLUMN IF NOT EXISTS age_style VARCHAR DEFAULT 'adult'"))
+            conn.execute(text("ALTER TABLE trips ADD COLUMN IF NOT EXISTS pace VARCHAR DEFAULT 'balanced'"))
+            conn.execute(text("ALTER TABLE trips ADD COLUMN IF NOT EXISTS budget VARCHAR DEFAULT 'medium'"))
+            conn.execute(text("ALTER TABLE trips ADD COLUMN IF NOT EXISTS place_style VARCHAR DEFAULT 'mix'"))
+            conn.execute(text("ALTER TABLE trips ADD COLUMN IF NOT EXISTS food_focus INTEGER DEFAULT 1"))
+            conn.execute(text("ALTER TABLE trips ADD COLUMN IF NOT EXISTS start_date VARCHAR"))
+            conn.execute(text("ALTER TABLE trips ADD COLUMN IF NOT EXISTS interests_json TEXT"))
             conn.execute(text("UPDATE users SET name = 'Traveler' WHERE name IS NULL"))
             
     except OperationalError: 
@@ -108,9 +117,33 @@ class TripCreate(BaseModel):
     title: str = Field(min_length=1, max_length=200)
     destination: str = Field(min_length=1, max_length=200)
 
+    days: int = Field(default=1, ge=1, le=14)
+    interests: List[str] = []
 
+    group_type: str = "solo"
+    age_style: str = "adult"
+    pace: str = "balanced"
+    budget: str = "medium"
+    place_style: str = "mix"
+    food_focus: bool =True
+
+    start_date: Optional[str] = None
+
+#this is so that trips can be edited later instead of creating a new one.
 class TripUpdate(BaseModel):
     title: str = Field(min_length=1, max_length=200)
+
+    days: Optional[int] = Field(default=None, ge=1, le=14)
+    interests: Optional[List[str]] = None
+
+    group_type: Optional[str] = None
+    age_style: Optional[str] = None
+    pace: Optional[str] = None
+    budget: Optional[str] = None
+    place_style: Optional[str] = None
+    food_focus: Optional[bool] = None
+
+    start_date: Optional[str] = None
 
 
 class RegisterPayload(BaseModel):
@@ -247,9 +280,23 @@ def _hash_password(password: str, salt_b64: str) -> str:
     dk = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, 210_000)
     return base64.b64encode(dk).decode("utf-8")
 
-
+#these will be some general backend helpers
 def _new_salt_b64() -> str:
     return base64.b64encode(secrets.token_bytes(16)).decode("utf-8")
+
+def _encode_interests(interests: List[str]) -> str:
+    return json.dumps(interests or [])
+
+def _decode_interests(raw: Optional[str]) -> List[str]:
+    if not raw:
+        return []
+    try: 
+        data = json.loads(raw)
+        if isinstance(data, list):
+            return [str(x) for x in data]
+        return []
+    except Exception: 
+        return []
 
 
 def _parse_bearer(authorization: str | None) -> str | None:
@@ -368,18 +415,57 @@ def me(user: models.User = Depends(get_current_user)):
 #DB--Trips
 @app.post("/trips")
 def create_trip(payload: TripCreate, db: db_dependency, user: models.User = Depends(get_current_user)):
-    trip = models.Trip(user_id=user.id, title=payload.title, destination=payload.destination)
+    trip = models.Trip(
+        user_id=user.id,
+        title=payload.title,
+        destination=payload.destination,
+        days=payload.days,
+        group_type=payload.group_type,
+        age_style=payload.age_style,
+        pace=payload.pace,
+        budget=payload.budget,
+        place_style=payload.place_style,
+        food_focus=1 if payload.food_focus else 0,
+        start_date=payload.start_date,
+        interests_json=_encode_interests(payload.interests),
+        )
     db.add(trip)
     db.commit()
     db.refresh(trip)
-    return {"id": trip.id, "title": trip.title, "destination": trip.destination}
+    return {
+        "id": trip.id,
+        "title": trip.title, 
+        "destination": trip.destination,
+        "days": trip.days,
+        "interests": _decode_interests(trip.interests_json),
+        "group_type": trip.group_type,
+        "age_style": trip.age_style,
+        "pace": trip.pace,
+        "budget": trip.budget,
+        "place_style": trip.place_style,
+        "food_focus": bool(trip.food_focus),
+        "start_date": trip.start_date,
+        }
 
 
 @app.get("/trips")
 def list_trips(db: db_dependency, user: models.User = Depends(get_current_user)):
     trips = db.query(models.Trip).filter(models.Trip.user_id == user.id).all()
     return [
-        {'id': t.id, 'title': t.title, 'destination': t.destination}
+        {
+            "id": t.id, 
+            "title": t.title, 
+            "destination": t.destination,
+            "days": t.days,
+            "interests": _decode_interests(t.interests_json),
+            "group_type": t.group_type,
+            "age_style": t.age_style,
+            "pace": t.pace,
+            "budget": t.budget,
+            "place_style": t.place_style,
+            "food_focus": bool(t.food_focus),
+            "start_date": t.start_date,
+        }
         for t in trips
     ]
 
@@ -392,9 +478,42 @@ def update_trip(trip_id: int, payload: TripUpdate, db: db_dependency, user: mode
     if trip.user_id != user.id:
         raise HTTPException(status_code=403, detail="Forbidden")
     trip.title = payload.title
+
+    if payload.days is not None:
+        trip.days = payload.days
+    if payload.interests is not None:
+        trip.interests_json = _encode_interests(payload.interests)
+    if payload.group_type is not None:
+        trip.group_type = payload.group_type
+    if payload.age_style is not None:
+        trip.age_style = payload.age_style
+    if payload.pace is not None:
+        trip.pace = payload.pace
+    if payload.budget is not None:
+        trip.budget = payload.budget
+    if payload.place_style is not None:
+        trip.place_style = payload.place_style
+    if payload.food_focus is not None:
+        trip.food_focus = 1 if payload.food_focus else 0
+    if payload.start_date is not None:
+        trip.start_date = payload.start_date
+
     db.commit()
     db.refresh(trip)
-    return {"id": trip.id, "title": trip.title, "destination": trip.destination}
+    return {
+        "id": trip.id, 
+        "title": trip.title, 
+        "destination": trip.destination,
+        "days": trip.days,
+        "interests": _decode_interests(trip.interests_json),
+        "group_type": trip.group_type,
+        "age_style": trip.age_style,
+        "pace": trip.pace,
+        "budget": trip.budget,
+        "place_style": trip.place_style,
+        "food_focus": bool(trip.food_focus),
+        "start_date": trip.start_date,
+        }
 
 
 @app.post("/trips/{trip_id}/items")
@@ -471,6 +590,15 @@ def get_trip(trip_id: int, db: db_dependency, user: models.User = Depends(get_cu
         "id": trip.id,
         "title": trip.title,
         "destination": trip.destination,
+        "days": trip.days,
+        "interests": _decode_interests(trip.interests_json),
+        "group_type": trip.group_type,
+        "age_style": trip.age_style,
+        "pace": trip.pace,
+        "budget": trip.budget,
+        "place_style": trip.place_style,
+        "food_focus": bool(trip.food_focus),
+        "start_date": trip.start_date,
         "items": [
             {
                 "id": i.id,
