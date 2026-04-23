@@ -25,6 +25,10 @@ from openai import OpenAI
 
 import re
 
+import asyncio
+
+import time
+
 BASE_DIR = Path(__file__).resolve().parent
 
 load_dotenv()
@@ -152,11 +156,12 @@ class TripProfile(BaseModel):
     food_focus: bool = True
 
 class ItineraryRequest(BaseModel):
-    destination: str = Field(min_length=1, max_length=120)
-    days: int = Field(ge=1, le=14)
+    destination: str = Field(min_length=1,max_length=120)
+    days: int= Field(ge=1, le=14)
     interests: List[str] = []
-    profile: Optional[TripProfile]=None
+    profile: Optional[TripProfile] = None
     start_date: Optional[str] = None
+    template_description: Optional[str] = None
 
 
 #AI classes will give the backend a clean response format
@@ -188,6 +193,8 @@ class ReplaceStopRequest(BaseModel):
     interest: str
     exclude_place_ids: List[str] = []
     profile: Optional[TripProfile] = None
+
+
 
 
 AI_OUTLINE_SCHEMA = {
@@ -1737,8 +1744,9 @@ async def fetch_place_details_for_scoring(place_id: str) -> dict:
 
 @app.post("/ai/itinerary", response_model=AIItineraryResponse)
 async def ai_itinerary(body: ItineraryRequest):
+    started = time.perf_counter()
+
     profile = body.profile or TripProfile()
-    template_description = body.template_description
 
     default_interests_by_group = {
         "solo": ["coffee", "museums", "parks", "history", "shopping", "food"],
@@ -1751,21 +1759,32 @@ async def ai_itinerary(body: ItineraryRequest):
         profile.group_type,
         ["coffee", "museums", "parks", "shopping", "food"]
     )
+    
+    print("AI itinerary start:", body.destination, "days=", body.days, "interests=", interests)
+
 
     grouped_places: dict[str, List[dict]] = {}
 
     for interest in interests:
-        results = await search_places_for_interests(body.destination, interest, profile)
-        scored = []
+        interest_started = time.perf_counter()
 
-        for place in results:
-            details = await fetch_place_details_for_scoring(place.get("place_id"))
-            if details:
+        results = await search_places_for_interests(body.destination, interest, profile)
+        results = results[:5]
+
+        scored = []
+        
+        detail_tasks = [
+            fetch_place_details_for_scoring(place.get('place_id'))
+            for place in results
+        ]
+        detail_results = await asyncio.gather(*detail_tasks, return_exceptions=True)
+        
+        for place, details in zip(results, detail_results):
+            if isinstance(details, dict) and details:
                 place.update(details)
             place["_interest"] = interest
             place["_score"] = score_place(place,interest,profile)
             scored.append(place)
-
 
         seen = set()
         ranked = []
@@ -1777,6 +1796,7 @@ async def ai_itinerary(body: ItineraryRequest):
             ranked.append(place)
 
         grouped_places[interest] = ranked
+        print(f"{interest} finished in {time.perf_counter() - interest_started:.2f}s")
 
     max_stops_per_day = 4
     if profile.pace == "relaxed":
@@ -1791,6 +1811,9 @@ async def ai_itinerary(body: ItineraryRequest):
         max_stops_per_day=max_stops_per_day,
         start_date = body.start_date,
     )
+
+    print("AI itinerary total:", round(time.perf_counter() - started, 2), "seconds")
+
 
     return {
         "destination": body.destination,
