@@ -36,6 +36,18 @@ class Trip(Base):
     title= Column(String, nullable=False)
     destination = Column(String, nullable=False)
 
+    days = Column(Integer, nullable=False, default=1)
+
+    group_type = Column(String, nullable=False, default="solo")
+    age_style = Column(String, nullable=False, default="adult")
+    pace = Column(String, nullable=False, default="balanced")
+    budget = Column(String, nullable=False, default="meduim")
+    place_style = Column(String, nullable=False, default="mix")
+    food_focus = Column(Integer, nullable=False, default=1)
+
+    start_date = Column(String, nullable=True)
+    interests_json = Column(Text, nullable=True)
+
 class TripItem(Base):
     __tablename__ = 'trip_item'
 
