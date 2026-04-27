@@ -2371,12 +2371,7 @@ function renderSelectedCategoryPills() {
     pill.addEventListener('click', () => {
       selectedCategories.delete(value);
       renderSelectedCategoryPills();
-
-      if (selectedCategories.size) {
-        runSearch();
-      } else {
-        renderResults([]);
-      }
+      runSearch();
     });
 
     wrap.appendChild(pill);
