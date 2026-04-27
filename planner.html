@@ -442,9 +442,53 @@
 
     .suggestWrap{
       position:relative;
-      flex:1;
-      min-width:220px;
+      flex:1 1 420px;
+      min-width:420px;
     }
+    .placeSearchWrap{
+      flex:1 1 560px;
+      min-width: 560px;
+    }
+    .placeSearchWrap#q{
+      width: 100%;
+      min-width: 560px;
+    }
+    #q {
+      width: 460px !important;
+      min-width: 460px !important;
+      max-width: 100%;
+    }
+
+    #qWrapper {
+      flex: 0 0 460px !important;
+      width: 460px !important;
+      max-width: 100%;
+    }
+
+    .plannerSearchRow {
+      display: grid;
+      grid-template-columns: minmax(320px, 1fr) auto auto;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .plannerSearchRow #qWrapper {
+      width: auto !important;
+      min-width: 0 !important;
+      max-width: none !important;
+      flex: unset !important;
+    }
+
+    .plannerSearchRow #q {
+      width: 100% !important;
+      min-width: 0 !important;
+      max-width: none !important;
+    }
+
+    .plannerSearchRow button {
+      white-space: nowrap;
+    }
+
     .suggestList{
       position:absolute;
       top:calc(100% + 6px);
@@ -534,7 +578,7 @@
   <div class="hint" style="margin-top:4px;">Edit your destination here. Searches will use this location.</div>
 
   <div class="searchRow" style="margin-top:10px;">
-    <div class="suggestWrap">
+    <div class="suggestWrap ">
       <input
         id="destinationInput"
         type="text"
@@ -586,14 +630,15 @@
           </div>
         -->
         <div class="searchCard">
-          <div class="searchRow">
-            <div class="suggestWrap">
+          <div class="searchRow plannerSearchRow">
+            <div id="qWrapper" class="suggestWrap placeSearchWrap">
               <input
                 id="q"
-                placeholder="Search Places (e.g. coffee, parks, museums)"
+                placeholder="Search anything specific or add interests, e.g. coffee, museums, vegan brunch"
                 maxlength="120"
                 autocomplete="off"
-              />
+                />
+              
               <div id="categorySuggestions" class="suggestList hidden"></div>
             </div>
 
@@ -1914,49 +1959,58 @@
 
     
 async function runSearch() {
-      const input = document.getElementById('q');
-      const typedSearch = (input?.value || '').trim().slice(0, 120);
-      const destination = (document.getElementById('destinationInput').value || '').trim().slice(0, 120);
+  const input = document.getElementById('q');
+  const typedSearch = (input?.value || '').trim().slice(0, 120);
+  const destination = (document.getElementById('destinationInput').value || '').trim().slice(0, 120);
 
-      if (input) input.value = typedSearch;
-      document.getElementById('destinationInput').value = destination;
+  document.getElementById('destinationInput').value = destination;
 
-      if (!destination) {
-        uiNotify('Missing destination', 'Enter a destination first.');
-        return;
-      }
+  if (!destination) {
+    uiNotify('Missing destination', 'Enter a destination first.');
+    return;
+  }
 
-      const categoryTerms = getSelectedCategoryValues();
-      const searchTerms = [...categoryTerms];
+  if (typedSearch) {
+    addCustomSearchPill(typedSearch, false);
+  }
 
-      if (typedSearch) {
-        searchTerms.push(typedSearch);
-      }
+  let searchTerms = getSelectedCategoryValues();
 
-      if (!searchTerms.length) {
-        uiNotify('Missing search', 'Select a category or type something to search for.');
-        return;
-      }
+  if (!searchTerms.length) {
+    const fallbackTerms = [
+      'things to do',
+      'restaurants',
+      'coffee',
+      'parks',
+      'museums',
+      'shopping',
+      'historic sites',
+      'outdoor attractions',
+      'local attractions'
+    ];
 
-      tripState.destination = destination;
+    searchTerms.push(...shuffleInPlace([...fallbackTerms]).slice(0, 4));
+  }
 
-      const grouped = [];
+  tripState.destination = destination;
 
-      for (const term of searchTerms) {
-        const fullQuery = `${term} in ${destination}`;
-        const res = await fetch(API_BASE + '/places/search?q=' + encodeURIComponent(fullQuery));
+  const grouped = [];
 
-        if (!res.ok) {
-          grouped.push([]);
-          continue;
-        }
+  for (const term of searchTerms) {
+    const fullQuery = `${term} in ${destination}`;
+    const res = await fetch(API_BASE + '/places/search?q=' + encodeURIComponent(fullQuery));
 
-        const data = await res.json();
-        grouped.push(data.results || []);
-      }
-
-      renderResults(interleaveResults(grouped));
+    if (!res.ok) {
+      grouped.push([]);
+      continue;
     }
+
+    const data = await res.json();
+    grouped.push(data.results || []);
+  }
+
+  renderResults(interleaveResults(grouped));
+}
 
     async function runAiGenerate() {
       const destination = (document.getElementById('destinationInput').value || tripState.destination || '').trim().slice(0, 120);
@@ -2344,8 +2398,34 @@ function addCategoryPill(item, shouldSearch = true) {
   if (shouldSearch) runSearch();
 }
 
+
+function addCustomSearchPill(text, shouldSearch = false) {
+  const clean = String(text || '').trim().slice(0,120);
+  if (!clean) return;
+
+  const key = `custom:${clean.toLowerCase()}`;
+
+  selectedCategories.set(key, {
+    main_text: clean,
+    secondary_text: 'Custom search',
+    value: clean,
+    custom: true
+  });
+  renderSelectedCategoryPills();
+
+  const input = document.getElementById('q');
+  const list = document.getElementById('categorySuggestions');
+
+  if (input) input.value = '';
+  hideSuggestionList(list);
+
+  if (shouldSearch) runSearch();
+}
+
 function getSelectedCategoryValues() {
-  return Array.from(selectedCategories.keys());
+  return Array.from(selectedCategories.values())
+    .map((item) => item.value)
+    .filter(Boolean);
 }
 
 function preloadCategoryPillsFromInterests(interestsCsv) {
@@ -2409,6 +2489,18 @@ function setupCategoryAutoComplete() {
     } else {
       hideSuggestionList(list);
     }
+  });
+
+  input.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+
+    e.preventDefault();
+
+    const value = input.value.trim().slice(0, 120);
+    if (!value) return;
+
+    addCustomSearchPill(value, false);
+    runSearch();
   });
 
   input.addEventListener('blur', () => {
@@ -2479,16 +2571,16 @@ setupCategoryAutoComplete();
 if (destParam) {
   preloadCategoryPillsFromInterests(interestsParam);
 
-  if (selectedCategories.size) {
-    runSearch();
-  } else if (qParam) {
+  if (qParam) {
     document.getElementById('q').value = qParam;
-    runSearch();
   }
+  runSearch();
 } else if (qParam) {
-  document.getElementById('q').value = qParam;
+  document.getElementById('q').value = qParams;
   runSearch();
 }
+
+
 
 updateSignInLink();
 setSignedInUi(!!getToken());
