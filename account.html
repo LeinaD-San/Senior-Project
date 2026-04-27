@@ -197,7 +197,17 @@
             <div class="sub">Give the AI a short description of the vibe.</div>
             <div style="margin-top:10px;display:flex;flex-direction:column;gap:10px">
               <input id="newTplName" class="field" type="text" placeholder="Template name (ex: Coffee Crawl)" maxlength="60" />
-              <textarea id="newTplDesc" class="field" rows="3" placeholder="Description for AI (ex: family-friendly, stroller accessible, low budget, short drives)" maxlength="400" style="resize:vertical"></textarea>
+              <div class="suggestWrap" style="width:100%;">
+              <textarea
+                id="newTplDesc"
+                class="field"
+                rows="3"
+                placeholder="Description for AI (ex: family-friendly, stroller accessible, low budget, short drives)"
+                maxlength="400"
+                style="resize:vertical"
+              ></textarea>
+              <div id="templateDescSuggestions" class="suggestList hidden"></div>
+            </div>
               <div style="display:flex;gap:10px;flex-wrap:wrap">
                 <input id="newTplDays" class="field" type="number" min="1" max="7" placeholder="Days (optional)" style="max-width:160px" />
                 <input id="newTplInterests" class="field" type="text" placeholder="Interests (optional, comma separated)" maxlength="120" />
@@ -439,6 +449,92 @@
       }
     }
 
+    const TEMPLATE_DESC_SUGGESTIONS = [
+      {
+        main_text: 'Family-friendly',
+        secondary_text: 'Kid-friendly, parks, short drives, casual food',
+        value: 'family-friendly, kid-friendly, short drives, parks, casual food'
+      },
+      {
+        main_text: 'Relaxed local day',
+        secondary_text: 'Coffee, parks, museums, easy schedule',
+        value: 'relaxed pace, coffee shops, parks, museums, easy schedule'
+      },
+      {
+        main_text: 'Date night',
+        secondary_text: 'Romantic, scenic, dinner, evening walk',
+        value: 'romantic date night, scenic places, dinner, coffee, evening walk'
+      },
+      {
+        main_text: 'Budget-friendly',
+        secondary_text: 'Affordable places, free attractions, casual food',
+        value: 'budget-friendly, affordable places, free attractions, casual food'
+      },
+      {
+        main_text: 'Hidden gems',
+        secondary_text: 'Local spots, unique places, less touristy',
+        value: 'local hidden gems, unique places, less touristy, authentic spots'
+      }
+    ];
+
+
+    function filterTemplateDescSuggestions(value) {
+      const q = String(value || '').trim().toLowerCase();
+
+      if (q.length < 2) return [];
+
+      return TEMPLATE_DESC_SUGGESTIONS.filter((item) => {
+        return (
+          item.main_text.toLowerCase().includes(q) ||
+          item.secondary_text.toLowerCase().includes(q) ||
+          item.value.toLowerCase().includes(q)
+        );
+      });
+    }
+
+    function setupTemplateDescriptionSuggestions() {
+      const input = document.getElementById('newTplDesc');
+      const list = document.getElementById('templateDescSuggestions');
+      if (!input || !list) return;
+
+      input.addEventListener('input', () => {
+        const value = input.value.trim().slice(0, 400);
+
+        if (value.length < 2) {
+          hideSuggestionList(list);
+          return;
+        }
+
+        const matches = filterTemplateDescSuggestions(value);
+
+        if (!matches.length) {
+          hideSuggestionList(list);
+          return;
+        }
+
+        renderSuggestionList(list, matches, (item) => {
+          input.value = item.value;
+          hideSuggestionList(list);
+          input.focus();
+        });
+      });
+
+      input.addEventListener('focus', () => {
+        const value = input.value.trim();
+
+        if (value.length >= 2) {
+          input.dispatchEvent(new Event('input'));
+        } else {
+          hideSuggestionList(list);
+        }
+      });
+
+      input.addEventListener('blur', () => {
+        setTimeout(() => hideSuggestionList(list), 150);
+      });
+    }
+
+
     function saveNewTemplate() {
       const name = (document.getElementById('newTplName').value || '').trim().slice(0, 60);
       const description = (document.getElementById('newTplDesc').value || '').trim().slice(0, 400);
@@ -674,6 +770,7 @@
 
       updateContinueUi();
       setupTemplateAutocomplete();
+      setupTemplateDescriptionSuggestions();
       renderTemplates();
 
       if (!token) {

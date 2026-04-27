@@ -587,14 +587,31 @@
         -->
         <div class="searchCard">
           <div class="searchRow">
-            <input id ="q" placeholder="Search Places (e.g. coffee, parks, museums)" maxlength="120" />
-            <button onclick = "runSearch()">Search</button>
-            <button type="button" id="aiGenerateBTN" onclick="runAiGenerate()" style="background:linear-gradient(135deg,var(--orange),var(--orange2)); color:white;">
-            Auto-Generate
+            <div class="suggestWrap">
+              <input
+                id="q"
+                placeholder="Search Places (e.g. coffee, parks, museums)"
+                maxlength="120"
+                autocomplete="off"
+              />
+              <div id="categorySuggestions" class="suggestList hidden"></div>
+            </div>
+
+            <button onclick="runSearch()">Search</button>
+
+            <button
+              type="button"
+              id="aiGenerateBTN"
+              onclick="runAiGenerate()"
+              style="background:linear-gradient(135deg,var(--orange),var(--orange2)); color:white;"
+            >
+              Auto-Generate
             </button>
           </div>
 
-          <div id="qCounter" style="margin-top:0;font-size:10px;line-height:1.1;color:rgba(11,18,32,.55);" aria-live="polite"></div>
+          <div id="selectedCategoryPills" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;"></div>
+          <div id="qCounter" style="display:none" aria-live="polite"></div>
+
 
         </div>
         <div class="searchCard" id="plannerProfileSummary" style="color:var(--muted); font-size:13px; line-height:1.5;">
@@ -1115,16 +1132,9 @@
     url.searchParams.set('dest', nextDestination);
     window.history.replaceState({}, '', url.toString());
 
-    const interestsParam = url.searchParams.get('interests') || '';
     const searchTerm = (document.getElementById('q').value || '').trim().slice(0, 120);
 
-    if (interestsParam) {
-      const merged = await searchByInterests(nextDestination, interestsParam);
-      renderResults(merged);
-      return;
-    }
-
-    if (searchTerm) {
+    if (selectedCategories.size || searchTerm) {
       await runSearch();
     }
   }
@@ -1896,94 +1906,57 @@
         }
 
         const data = await res.json();
-        grouped.push(shuffleInPlace([...(data.results || [])]));
-      }
-
-      return interleaveResults(grouped);
-    }
-
-    
-
-    function buildInterestQueries(destination, interestsCsv) {
-      if (!interestsCsv) return [];
-      const destPart = destination ? ` in ${destination}` : "";
-      return interestsCsv
-        .split(",")
-        .map(s => s.trim())
-        .filter(Boolean)
-        .map(id => (INTEREST_TO_QUERY[id] || id) + destPart);
-    }
-
-    function interleaveResults(groupedResults) {
-      const groups = groupedResults.filter(g => g.length > 0);
-      if (!groups.length) return [];
-
-      const result = [];
-      const seen = new Set();
-      let maxLen = Math.max(...groups.map(g => g.length));
-
-      for (let i = 0; i < maxLen; i++) {
-        for (const group of groups) {
-          if (i < group.length) {
-            const p = group[i];
-            if (!p.place_id || seen.has(p.place_id)) continue;
-            seen.add(p.place_id);
-            result.push(p);
-          }
-        }
-      }
-      return result;
-    }
-
-    async function searchByInterests(destination, interestsCsv) {
-      const queries = buildInterestQueries(destination, interestsCsv);
-      if (!queries.length) return [];
-
-      const grouped = [];
-      for (const q of queries) {
-        const res = await fetch(API_BASE + "/places/search?q=" + encodeURIComponent(q));
-        if (!res.ok) { grouped.push([]); continue; }
-        const data = await res.json();
         grouped.push(data.results || []);
       }
 
       return interleaveResults(grouped);
     }
 
+    
+async function runSearch() {
+      const input = document.getElementById('q');
+      const typedSearch = (input?.value || '').trim().slice(0, 120);
+      const destination = (document.getElementById('destinationInput').value || '').trim().slice(0, 120);
 
+      if (input) input.value = typedSearch;
+      document.getElementById('destinationInput').value = destination;
 
-  async function runSearch() {
-  const searchTerm = document.getElementById('q').value.trim().slice(0, 120);
-  const destination = (document.getElementById('destinationInput').value || '').trim().slice(0, 120);
+      if (!destination) {
+        uiNotify('Missing destination', 'Enter a destination first.');
+        return;
+      }
 
-  document.getElementById('q').value = searchTerm;
-  document.getElementById('destinationInput').value = destination;
+      const categoryTerms = getSelectedCategoryValues();
+      const searchTerms = [...categoryTerms];
 
-  if (!destination) {
-    uiNotify('Missing destination', 'Enter a destination first.');
-    return;
-  }
+      if (typedSearch) {
+        searchTerms.push(typedSearch);
+      }
 
-  if (!searchTerm) {
-    uiNotify('Missing search', 'Enter something to search for.');
-    return;
-  }
+      if (!searchTerms.length) {
+        uiNotify('Missing search', 'Select a category or type something to search for.');
+        return;
+      }
 
-  tripState.destination = destination;
+      tripState.destination = destination;
 
-  const fullQuery = `${searchTerm} in ${destination}`;
+      const grouped = [];
 
-  const res = await fetch(API_BASE + '/places/search?q=' + encodeURIComponent(fullQuery));
-  if (!res.ok) {
-    renderResults([]);
-    uiNotify('Search failed', 'Check GOOGLE_MAPS_API_KEY and backend logs.');
-    return;
-  }
+      for (const term of searchTerms) {
+        const fullQuery = `${term} in ${destination}`;
+        const res = await fetch(API_BASE + '/places/search?q=' + encodeURIComponent(fullQuery));
 
-  const data = await res.json();
-  renderResults(data.results || []);
-}
+        if (!res.ok) {
+          grouped.push([]);
+          continue;
+        }
 
+        const data = await res.json();
+        grouped.push(data.results || []);
+      }
+
+      renderResults(interleaveResults(grouped));
+    }
 
     async function runAiGenerate() {
       const destination = (document.getElementById('destinationInput').value || tripState.destination || '').trim().slice(0, 120);
@@ -1996,10 +1969,15 @@
 
       const params = new URLSearchParams(window.location.search);
       const interestsParam = params.get('interests') || '';
-      const interests = interestsParam
-        .split(',')
-        .map(s => s.trim())
-        .filter(Boolean);
+
+      const pillInterests = getSelectedCategoryValues();
+
+      const interests = pillInterests.length
+        ? pillInterests
+        : interestsParam
+            .split(',')
+            .map(s => s.trim())
+            .filter(Boolean);
 
       try {
         await withAiLoading('Generating itinerary…', async () => {
@@ -2063,7 +2041,6 @@
         uiNotify('AI auto-generate failed', String(err.message || err));
       }
     }
-
 
 
     async function saveTrip() {
@@ -2263,6 +2240,181 @@ function setupDestinationAutocomplete() {
       bindCharLeftCounter(document.getElementById('destinationInput'), document.getElementById('destinationCounter'));
 
     }
+const CATEGORY_SUGGESTIONS = [
+  {
+    main_text: 'Food',
+    secondary_text: 'Restaurants, brunch, tacos, local eats',
+    value: 'food'
+  },
+  {
+    main_text: 'Coffee',
+    secondary_text: 'Coffee shops, cafes, bakeries',
+    value: 'coffee'
+  },
+  {
+    main_text: 'Parks',
+    secondary_text: 'Parks, gardens, walking areas',
+    value: 'parks'
+  },
+  {
+    main_text: 'Museums',
+    secondary_text: 'Museums, galleries, culture',
+    value: 'museums'
+  },
+  {
+    main_text: 'Nightlife',
+    secondary_text: 'Bars, lounges, evening spots',
+    value: 'nightlife'
+  },
+  {
+    main_text: 'Shopping',
+    secondary_text: 'Malls, markets, bookstores, retail',
+    value: 'shopping'
+  },
+  {
+    main_text: 'Outdoors',
+    secondary_text: 'Trails, nature, outdoor attractions',
+    value: 'outdoors'
+  },
+  {
+    main_text: 'History',
+    secondary_text: 'Historic sites, landmarks, old districts',
+    value: 'history'
+  }
+];
+
+const selectedCategories = new Map();
+
+function getCategoryByValue(value) {
+  return CATEGORY_SUGGESTIONS.find((item) => item.value === value);
+}
+
+function renderSelectedCategoryPills() {
+  const wrap = document.getElementById('selectedCategoryPills');
+  if (!wrap) return;
+
+  wrap.innerHTML = '';
+
+  selectedCategories.forEach((item, value) => {
+    const pill = document.createElement('button');
+    pill.type = 'button';
+    pill.style.border = '1px solid var(--border)';
+    pill.style.background = 'white';
+    pill.style.borderRadius = '999px';
+    pill.style.padding = '7px 10px';
+    pill.style.fontWeight = '900';
+    pill.style.cursor = 'pointer';
+    pill.style.display = 'inline-flex';
+    pill.style.alignItems = 'center';
+    pill.style.gap = '8px';
+    pill.style.color = 'var(--ink)';
+
+    pill.innerHTML = `
+      <span>${escapeHtml(item.main_text || value)}</span>
+      <span style="color:#b91c1c;font-weight:900;">×</span>
+    `;
+
+    pill.addEventListener('click', () => {
+      selectedCategories.delete(value);
+      renderSelectedCategoryPills();
+
+      if (selectedCategories.size) {
+        runSearch();
+      } else {
+        renderResults([]);
+      }
+    });
+
+    wrap.appendChild(pill);
+  });
+}
+
+function addCategoryPill(item, shouldSearch = true) {
+  if (!item || !item.value) return;
+
+  selectedCategories.set(item.value, item);
+  renderSelectedCategoryPills();
+
+  const input = document.getElementById('q');
+  const list = document.getElementById('categorySuggestions');
+
+  if (input) input.value = '';
+  hideSuggestionList(list);
+
+  if (shouldSearch) runSearch();
+}
+
+function getSelectedCategoryValues() {
+  return Array.from(selectedCategories.keys());
+}
+
+function preloadCategoryPillsFromInterests(interestsCsv) {
+  const values = String(interestsCsv || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  values.forEach((value) => {
+    const found = getCategoryByValue(value);
+    if (found) addCategoryPill(found, false);
+  });
+
+  renderSelectedCategoryPills();
+}
+
+function filterCategorySuggestions(value) {
+  const q = String(value || '').trim().toLowerCase();
+
+  if (q.length < 2) return [];
+
+  return CATEGORY_SUGGESTIONS.filter((item) => {
+    return (
+      item.main_text.toLowerCase().includes(q) ||
+      item.secondary_text.toLowerCase().includes(q) ||
+      item.value.toLowerCase().includes(q)
+    );
+  });
+}
+
+function setupCategoryAutoComplete() {
+  const input = document.getElementById('q');
+  const list = document.getElementById('categorySuggestions');
+  if (!input || !list) return;
+
+  input.addEventListener('input', () => {
+    const value = input.value.trim().slice(0, 120);
+
+    if (value.length < 2) {
+      hideSuggestionList(list);
+      return;
+    }
+
+    const matches = filterCategorySuggestions(value);
+
+    if (!matches.length) {
+      hideSuggestionList(list);
+      return;
+    }
+
+    renderSuggestionList(list, matches, (item) => {
+      addCategoryPill(item);
+    });
+  });
+
+  input.addEventListener('focus', () => {
+    const value = input.value.trim();
+
+    if (value.length >= 2) {
+      input.dispatchEvent(new Event('input'));
+    } else {
+      hideSuggestionList(list);
+    }
+  });
+
+  input.addEventListener('blur', () => {
+    setTimeout(() => hideSuggestionList(list), 150);
+  });
+}
 
     //  init from URL params 
 
@@ -2319,21 +2471,20 @@ initDays();
 renderItinerary();
 renderResults([]);
 renderPlannerProfileSummary();
+
 setupCharLeftCounters();
 setupDestinationAutocomplete();
+setupCategoryAutoComplete();
 
 if (destParam) {
-  const resolvedInterests = resolvePlannerInterests(interestsParam);
+  preloadCategoryPillsFromInterests(interestsParam);
 
-  document.getElementById('q').value =
-    interestsParam && interestsParam.trim()
-      ? interestsParam.split(',').join(', ')
-      : 'All categories';
-
-  (async () => {
-    const merged = await searchByInterests(destParam, resolvedInterests.join(','));
-    renderResults(merged);
-  })();
+  if (selectedCategories.size) {
+    runSearch();
+  } else if (qParam) {
+    document.getElementById('q').value = qParam;
+    runSearch();
+  }
 } else if (qParam) {
   document.getElementById('q').value = qParam;
   runSearch();
@@ -2357,22 +2508,6 @@ if (getToken() && tripIdParam) {
 
 const autogenParam = params.get('autogen');
 console.log("AUTOGEN PARAM:", autogenParam);
-if (autogenParam == '1') {
-  setTimeout(() => {
-    runAiGenerate();
-  }, 250);
-}
-  </script>
-</body>
-</html>
-0) {
-    loadTripById(tripId).catch(() => {});
-  }
-}
-
-
-
-const autogenParam = params.get('autogen');
 if (autogenParam == '1') {
   setTimeout(() => {
     runAiGenerate();
