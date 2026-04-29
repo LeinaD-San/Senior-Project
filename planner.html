@@ -1977,19 +1977,25 @@ async function runSearch() {
   let searchTerms = getSelectedCategoryValues();
 
   if (!searchTerms.length) {
-    const fallbackTerms = [
-      'things to do',
-      'restaurants',
-      'coffee',
-      'parks',
-      'museums',
-      'shopping',
-      'historic sites',
-      'outdoor attractions',
-      'local attractions'
-    ];
+    const res = await fetch(API_BASE + '/places/recommended',{
+      method: 'POST',
+      headers: {' Content-Type': 'application/json'},
+      body: JSON.stringify({
+        destination,
+        profile: personalizationProfile,
+        limit:30
+      })
+    });
 
-    searchTerms.push(...shuffleInPlace([...fallbackTerms]).slice(0, 4));
+    const data = await.res.json().catch(() =>({}));
+
+    if(!res.ok){
+      uiNotify('Recommended places failed', data.detail || 'Could not load recommended places.');
+      return;
+    }
+
+    renderResults(data.results || []);
+    return;
   }
 
   tripState.destination = destination;

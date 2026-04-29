@@ -32,6 +32,8 @@ import asyncio
 
 import time
 
+from typing import Optional
+
 BASE_DIR = Path(__file__).resolve().parent
 
 load_dotenv()
@@ -132,6 +134,7 @@ class TripCreate(BaseModel):
 
     start_date: Optional[str] = None
 
+
 #this is so that trips can be edited later instead of creating a new one.
 class TripUpdate(BaseModel):
     title: str = Field(min_length=1, max_length=200)
@@ -190,6 +193,11 @@ class TripProfile(BaseModel):
     budget: str = 'medium'
     place_style: str = 'mix'
     food_focus: bool = True
+
+class recommendedPlacesRequest(BaseModel):
+    destination: str
+    profile: Optional[TripProfile] = None
+    limit: int = 24
 
 class ItineraryRequest(BaseModel):
     destination: str = Field(min_length=1,max_length=120)
@@ -891,6 +899,45 @@ async def places_search(
 
     return {"query": q, "count": len(results), "results": results}
 
+@app.post('/places/recommended')
+async def recommended_places(payload: recommendedPlacesRequest):
+    destination = payload.destination.strip()
+
+    if not destination:
+        raise HTTPException(status_code=400, detail="Destination is required")
+
+    profile = payload.profile or TripProfile()
+    interests = get_recommended_interests(profile)
+
+    grouped_results = []
+
+    for interest in interests:
+        try:
+            places = await search_places_for_interests(
+                destination = destination,
+                interest = interest,
+                profile = profile,
+                template_description=None,
+            )
+            grouped_results.append(places)
+        except Exception:
+            grouped_results.append([])
+    
+    merged = []
+    max_len = max((len(group) for group in grouped_results), default=0)
+
+    for i in range(max_len):
+        for group in grouped_results:
+            if i < len(group):
+                merged.append(group[i])
+    unique = dedupe_places_by_id(merged)
+
+    return {
+        "destination": destination,
+        "interests": interests,
+        "results": unique[:max(1, min(payload.limit, 60))],
+    }
+
 
 @app.get("/places/autocomplete")
 async def places_autocomplete(
@@ -1072,6 +1119,52 @@ INTEREST_QUERY_MAP = {
     "history": "historic sites",
 }
 
+RECOMMENDED_INTERESTS_BY_PROFILE = {
+    "family": ["parks", "food", "museums", "shopping"],
+    "couple": ["coffee", "food", "history", "nightlife"],
+    "friends": ["food", "nightlife", "shopping", "outdoors"],
+    "solo": ["coffee", "history", "parks", "food"],
+}
+
+DEFAULT_RECOMMENDED_INTERESTS = [
+    "food",
+    "coffee",
+    "parks",
+    "museums",
+    "history",
+    "shopping",
+    "outdoors",
+    "nightlife",
+]
+
+def get_recommended_interests(profile: Optional[TripProfile]) -> list[str]:
+    profile = profile or TripProfile()
+
+    interests = list(
+        RECOMMENDED_INTERESTS_BY_PROFILE.get(
+            profile.group_type,
+            DEFAULT_RECOMMENDED_INTERESTS[:4],
+        )
+    )
+
+    if profile.food_focus and "food" not in interests:
+        interests.insert(0, 'food')
+
+    if profile.place_style == 'hidden_gems':
+        interests.append('history')
+        interests.append('coffee')
+
+    if profile.place_style =='tourists_spots':
+        interests.append('museums')
+        interests.append('history')
+    seen = set()
+    cleaned = []
+    for interest in interests:
+        if interest not in seen:
+            seen.add(interest)
+            cleaned.append(interest)
+    return cleaned[:5]
+
 def build_interest_query(
     destination: str,
     interest: str,
@@ -1170,6 +1263,21 @@ def dedupe_places(places: List[dict]) -> List[dict]:
         seen.add(place_id)
         deduped.append(p)
     return deduped
+
+def dedupe_places_by_id(places: list[dict]) -> list[dict]:
+    seen = set()
+    unique = []
+
+    for place in places:
+        place_id = place.get('place_id')
+        fallback_key = f'{place.get('name', '')}|{place.get('address', '')}'
+
+        key = place_id or fallback_key
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        unique.append(place)
+    return unique
 
 
 @app.post("/ai/replace-stop")
