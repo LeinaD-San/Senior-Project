@@ -868,7 +868,16 @@
                 await authFetch(`/trips/${tripState.currentTripId}`, {
                   method: 'PATCH',
                   headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ title: next }),
+                  body: JSON.stringify({ 
+                    title:next,
+                    days: tripState.days,
+                    interests: getSelectedCategoryValues(),
+                    group_type: personalizationProfile.group_type,
+                    pace: personalizationProfile.pace,
+                    budget: personalizationProfile.budget,
+                    place_style: personalizationProfile.place_style,
+                    food_focus: personalizationProfile.food_focus,
+                  }),
                 }).catch(() => {});
                 await loadAccountUi().catch(() => {});
               }
@@ -1306,6 +1315,7 @@
       setTripTitle(trip.title || (tripState.destination ? `Trip to ${tripState.destination}` : 'Trip'));
       document.getElementById('destinationInput').value = tripState.destination;
       setupCharLeftCounters();
+      restoreSavedInterestPills(trip.interests || []);
       tripState.activeDay = 1;
       tripState.currentTripId = trip.id;
       localStorage.setItem('tragent_last_trip_id', String(trip.id));
@@ -1330,6 +1340,8 @@
         });
       });
       resetDays(maxDay);
+
+      await runSearch();
     }
 
     async function loadAccountUi() {
@@ -1979,7 +1991,7 @@ async function runSearch() {
   if (!searchTerms.length) {
     const res = await fetch(API_BASE + '/places/recommended',{
       method: 'POST',
-      headers: {' Content-Type': 'application/json'},
+      headers: { 'Content-Type': 'application/json'},
       body: JSON.stringify({
         destination,
         profile: personalizationProfile,
@@ -1987,7 +1999,7 @@ async function runSearch() {
       })
     });
 
-    const data = await.res.json().catch(() =>({}));
+    const data = await res.json().catch(() =>({}));
 
     if(!res.ok){
       uiNotify('Recommended places failed', data.detail || 'Could not load recommended places.');
@@ -2119,7 +2131,18 @@ async function runSearch() {
       const resTrip = await fetch('/trips', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ title, destination }),
+        body: JSON.stringify({
+          title,
+          destination,
+          days: tripState.days,
+          interests: getSelectedCategoryValues(),
+          group_type: personalizationProfile.group_type,
+          pace: personalizationProfile.pace,
+          budget: personalizationProfile.budget,
+          place_style: personalizationProfile.place_style,
+          food_focus: personalizationProfile.food_focus,
+          start_date: getTodayIsoDate(),
+        }),
       });
       const trip = await resTrip.json().catch(() => ({}));
       if (!resTrip.ok) {
@@ -2441,6 +2464,30 @@ function preloadCategoryPillsFromInterests(interestsCsv) {
   });
 
   renderSelectedCategoryPills();
+}
+
+function restoreSavedInterestPills(savedInterests){
+  selectedCategories.clear();
+
+  const values = Array.isArray(savedInterests)
+  ? savedInterests
+  : String(savedInterests || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  values.forEach((value) => {
+    const knownCategory = getCategoryByValue(value);
+
+    if (knownCategory) {
+      addCategoryPill(knownCategory, false);
+    } else {
+      addCustomSearchPill(value, false);
+    }
+  });
+
+  renderSelectedCategoryPills();
+  
 }
 
 function filterCategorySuggestions(value) {
