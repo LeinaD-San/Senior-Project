@@ -47,6 +47,9 @@ class Trip(Base):
 
     start_date = Column(String, nullable=True)
     interests_json = Column(Text, nullable=True)
+    #Store general trip notes/reminders for the whole trip
+    #This would also be different from the TripItem.notes because this belongs to the whole trip
+    notes = Column(Text, nullable=True)
 
 class TripItem(Base):
     __tablename__ = 'trip_item'
@@ -63,6 +66,9 @@ class TripItem(Base):
     place_id = Column(String, nullable=False)
     name = Column(String, nullable=False)
     notes = Column(Text, default='')
+
+#stores what kind of shop this is. 
+    category = Column(String, nullable = True)
 
     lat = Column(Float, nullable=True)
     lng = Column(Float,nullable=True)
