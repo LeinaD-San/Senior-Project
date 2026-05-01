@@ -100,8 +100,15 @@ def on_startup():
             conn.execute(text("ALTER TABLE trips ADD COLUMN IF NOT EXISTS budget VARCHAR DEFAULT 'medium'"))
             conn.execute(text("ALTER TABLE trips ADD COLUMN IF NOT EXISTS place_style VARCHAR DEFAULT 'mix'"))
             conn.execute(text("ALTER TABLE trips ADD COLUMN IF NOT EXISTS food_focus INTEGER DEFAULT 1"))
+            
             conn.execute(text("ALTER TABLE trips ADD COLUMN IF NOT EXISTS start_date VARCHAR"))
             conn.execute(text("ALTER TABLE trips ADD COLUMN IF NOT EXISTS interests_json TEXT"))
+            #Adds a trip level notes reminder column
+            conn.execute(text("ALTER TABLE trips ADD COLUMN IF NOT EXISTS notes TEXT"))
+            #Adds a category column to each trip item.
+            #This lets each stop be labled as food, coffee, parks, and museums. 
+            conn.execute(text("ALTER TABLE trip_item ADD COLUMN IF NOT EXISTS category VARCHAR"))
+
             conn.execute(text("UPDATE users SET name = 'Traveler' WHERE name IS NULL"))
             
     except OperationalError: 
@@ -133,6 +140,8 @@ class TripCreate(BaseModel):
     food_focus: bool =True
 
     start_date: Optional[str] = None
+    #optional notes or reminders for the whole trip
+    notes: Optional[str] = Field(default=None, max_length=3000)
 
 
 #this is so that trips can be edited later instead of creating a new one.
@@ -150,6 +159,8 @@ class TripUpdate(BaseModel):
     food_focus: Optional[bool] = None
 
     start_date: Optional[str] = None
+
+    notes: Optional[str] = Field(default=None, max_length=3000)
 
 
 class RegisterPayload(BaseModel):
@@ -170,6 +181,8 @@ class TripItemCreate(BaseModel):
     place_id: str = Field(min_length=1, max_length=200)
     name: str = Field(min_length=1, max_length=200)
     notes: str = Field(default="", max_length=1000)
+    #Category tells the frontend what type of stop this is.
+    category: Optional[str] = Field(default=None, max_length=50)
 
     lat: Optional[float] = None
     lng: Optional[float] = None
@@ -185,6 +198,8 @@ class TripItemUpdate(BaseModel):
     completed: Optional[bool] = None
     arrival_time: Optional[str] = Field(default=None, max_length=5)
     departure_time: Optional[str] = Field(default=None, max_length=5)
+    #allows the category of an existing stop to be edited. 
+    category: Optional[str] = Field(default=None, max_length=50)
 
 class TripProfile(BaseModel):
     group_type: str = 'solo'
@@ -212,6 +227,7 @@ class ItineraryRequest(BaseModel):
 class AIStop(BaseModel):
     place_id: str
     name: str
+    category: Optional[str] = None
     address: str = ""
     rating: Optional[float] = None
     lat: Optional[float] = None
@@ -311,6 +327,46 @@ def _decode_interests(raw: Optional[str]) -> List[str]:
     except Exception: 
         return []
 
+#This helper will protect the app from broken times before it goes through the database
+def validate_hhmm(value: Optional[str]) -> Optional[str]:
+    # if the user did not provide a time, that is fine
+    if value is None or value == "":
+        return value
+    #makes sure the time looks like exactly to digits, colon, two digits.
+    if not re.match(r"^\d{2}:\d{2}$", value):
+        raise HTTPException(
+            status_code=400,
+            detail="Time must use HH:MM format, for example 09:30 or 14:00.",
+        )
+
+    hour_text, minute_text = value.split(":")
+    hour = int(hour_text)
+    minute = int(minute_text)
+
+    if hour < 0 or hour > 23 or minute < 0 or minute > 59:
+        raise HTTPException(
+            status_code=400,
+            detail="Time must be a valid 24-hour time."
+        )
+
+    return value
+
+def validate_time_range(
+    arrival_time: Optional[str],
+    departure_time: Optional[str],
+) -> None:
+
+    if not arrival_time or not departure_time:
+        return
+    
+    arrival_minutes = hhmm_to_minutes(arrival_time)
+    departure_minutes = hhmm_to_minutes(departure_time)
+
+    if departure_minutes <= arrival_minutes:
+        raise HTTPException(
+            status_code=400,
+            detail="Departure time must be after arrival time.",
+        )
 
 def _parse_bearer(authorization: str | None) -> str | None:
     if not authorization:
@@ -441,6 +497,7 @@ def create_trip(payload: TripCreate, db: db_dependency, user: models.User = Depe
         food_focus=1 if payload.food_focus else 0,
         start_date=payload.start_date,
         interests_json=_encode_interests(payload.interests),
+        notes=payload.notes,
         )
     db.add(trip)
     db.commit()
@@ -458,6 +515,7 @@ def create_trip(payload: TripCreate, db: db_dependency, user: models.User = Depe
         "place_style": trip.place_style,
         "food_focus": bool(trip.food_focus),
         "start_date": trip.start_date,
+        "notes": trip.notes,
         }
 
 
@@ -478,6 +536,7 @@ def list_trips(db: db_dependency, user: models.User = Depends(get_current_user))
             "place_style": t.place_style,
             "food_focus": bool(t.food_focus),
             "start_date": t.start_date,
+            "notes": t.notes,
         }
         for t in trips
     ]
@@ -510,6 +569,8 @@ def update_trip(trip_id: int, payload: TripUpdate, db: db_dependency, user: mode
         trip.food_focus = 1 if payload.food_focus else 0
     if payload.start_date is not None:
         trip.start_date = payload.start_date
+    if payload.notes is not None:
+        trip.notes = payload.notes
 
     db.commit()
     db.refresh(trip)
@@ -526,6 +587,7 @@ def update_trip(trip_id: int, payload: TripUpdate, db: db_dependency, user: mode
         "place_style": trip.place_style,
         "food_focus": bool(trip.food_focus),
         "start_date": trip.start_date,
+        "notes": trip.notes,
         }
 
 
@@ -547,6 +609,12 @@ def add_trip_item(trip_id: int, payload: TripItemCreate, db: db_dependency, user
     )
 
     next_pos = (last_pos + 1) if last_pos is not None else 1
+    #validate arrival and departure times before saving.
+    arrival_time = validate_hhmm(payload.arrival_time)
+    departure_time = validate_hhmm(payload.departure_time)
+
+    #makes sure the departure time comes after the arrival time.
+    validate_time_range(arrival_time, departure_time)
 
     #we will use position=next_pos when creating the item. 
 
@@ -556,13 +624,14 @@ def add_trip_item(trip_id: int, payload: TripItemCreate, db: db_dependency, user
         position=next_pos,
         place_id=payload.place_id,
         name=payload.name,
+        category=payload.category,
         notes=payload.notes,
         lat= payload.lat,
         lng=payload.lng,
         address =payload.address,
         rating=payload.rating,
-        arrival_time=payload.arrival_time,
-        departure_time=payload.departure_time,
+        arrival_time=arrival_time,
+        departure_time=departure_time,
     )
     db.add(item)
     db.commit()
@@ -575,6 +644,7 @@ def add_trip_item(trip_id: int, payload: TripItemCreate, db: db_dependency, user
         "place_id": item.place_id,
         "name": item.name,
         "notes": item.notes,
+        "category": item.category,
         "completed": bool(item.completed),
         "lat": item.lat,
         "lng": item.lng,
@@ -612,6 +682,7 @@ def get_trip(trip_id: int, db: db_dependency, user: models.User = Depends(get_cu
         "place_style": trip.place_style,
         "food_focus": bool(trip.food_focus),
         "start_date": trip.start_date,
+        "notes": trip.notes,
         "items": [
             {
                 "id": i.id,
@@ -620,6 +691,7 @@ def get_trip(trip_id: int, db: db_dependency, user: models.User = Depends(get_cu
                 "place_id": i.place_id,
                 "name": i.name,
                 "notes": i.notes,
+                "category": i.category,
                 "completed": bool(i.completed),
                 "lat": i.lat,
                 "lng": i.lng,
@@ -682,12 +754,25 @@ def update_trip_item(
     updates = payload.model_dump(exclude_unset=True)
     if 'notes' in updates:
         item.notes = updates['notes']
+    if 'category' in updates:
+        item.category = updates['category']
     if 'completed' in updates:
         item.completed = 1 if updates['completed'] else 0
+
+    new_arrival_time = item.arrival_time
+    new_departure_time = item.departure_time
+
     if 'arrival_time' in updates:
-        item.arrival_time = updates['arrival_time']
+        new_arrival_time = validate_hhmm(updates['arrival_time'])
     if 'departure_time' in updates:
-        item.departure_time = updates['departure_time']
+        new_departure_time = validate_hhmm(updates['departure_time'])
+
+    #makes sure departure is still after arrival after the update
+    validate_time_range(new_arrival_time, new_departure_time)
+
+    item.arrival_time = new_arrival_time
+    item.departure_time = new_departure_time
+
     db.commit()
     db.refresh(item)
     return {
@@ -698,6 +783,7 @@ def update_trip_item(
         'place_id': item.place_id,
         'name': item.name,
         'notes': item.notes,
+        'category': item.category,
         'completed': bool(item.completed),
         'arrival_time': item.arrival_time,
         'departure_time': item.departure_time,
@@ -742,7 +828,13 @@ def reorder_day_items(
         'trip_id': trip_id,
         'day': day,
         'items': [
-            {"id": i.id, "position": i.position, "place_id": i.place_id, "name": i.name, "notes": i.notes}
+            {"id": i.id,
+             "position": i.position,
+             "place_id": i.place_id,
+             "name": i.name,
+             "notes": i.notes,
+             "category": i.category,
+             }
             for i in updated
         ],
     } 
@@ -1269,8 +1361,8 @@ def dedupe_places_by_id(places: list[dict]) -> list[dict]:
     unique = []
 
     for place in places:
-        place_id = place.get('place_id')
-        fallback_key = f'{place.get('name', '')}|{place.get('address', '')}'
+        place_id = place.get("place_id")
+        fallback_key = f"{place.get('name', '')}|{place.get('address', '')}"
 
         key = place_id or fallback_key
         if not key or key in seen:
@@ -1880,6 +1972,7 @@ def build_balanced_itinerary(
             itinerary[day_index]["stops"].append({
                 "place_id": chosen.get("place_id"),
                 "name": chosen.get("name"),
+                "category": chosen.get("_interest"),
                 "address": chosen.get("address") or "",
                 "rating": chosen.get("rating"),
                 "lat": chosen.get("lat"),
@@ -1931,6 +2024,7 @@ def distribute_places_across_days(
         itinerary[day_index]["stops"].append({
             "place_id": place.get("place_id"),
             "name": place.get("name"),
+            "category": place.get("_interest"),
             "address": place.get("address") or "",
             "rating": place.get("rating"),
             "lat": place.get("lat"),
@@ -1982,6 +2076,107 @@ async def fetch_place_details_for_scoring(place_id: str) -> dict:
     except Exception:
         return {}
 
+def parse_google_duration_to_minutes(duration: str | None) -> int | None:
+    """
+    This will convert google routes api duration text into minutes.
+    google normally returns duration like 735s
+    """
+    if not duration:
+        return None
+    if not duration.endswith("s"):
+        return None
+
+    try:
+        seconds = float(duration.replace("s", ""))
+    except ValueError:
+        return None
+
+    minutes = int((seconds + 59) // 60)
+
+    return minutes
+
+async def fetch_google_drive_route(
+    origin_lat: float,
+    origin_lng: float,
+    destination_lat: float,
+    destination_lng: float,
+) -> dict:
+
+    api_key = os.getenv("GOOGLE_MAPS_API_KEY")
+    if not api_key:
+        raise HTTPException(
+            status_code=500,
+            detail="GOOGLE_MAPS_API_KEY is not set"
+        )
+
+    url = "https://routes.googleapis.com/directions/v2:computeRoutes"
+
+    headers = {
+        "Content-Type": "application/json",
+        "X-Goog-Api-Key": api_key,
+        "X-Goog-FieldMask": "routes.distanceMeters,routes.duration",
+    }
+
+    payload = {
+        "origin": {
+            "location": {
+                "latLng": {
+                    "latitude": origin_lat,
+                    "longitude": origin_lng,
+                }
+            }
+        },
+        "destination": {
+            "location": {
+                "latLng": {
+                    "latitude": destination_lat,
+                    "longitude": destination_lng,
+                }
+            }
+        },
+        "travelMode": "DRIVE",
+        "routingPreference": "TRAFFIC_AWARE",
+    }
+
+    async with httpx.AsyncClient(timeout=20) as client:
+        response = await client.post(url, headers=headers, json=payload)
+
+    if response.status_code != 200:
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "message": "Google Routes API request failed",
+                "google_status_code": response.status_code,
+                "google_response": response.text,
+            },
+        )
+
+    data = response.json()
+    routes = data.get("routes", [])
+
+    if not routes: 
+        raise HTTPException(
+            status_code=502,
+            detail="Google Routes API did not return a route.",
+        )
+
+    route = routes[0]
+
+    distance_meters = route.get("distanceMeters")
+    duration_text = route.get("duration")
+
+    duration_minutes = parse_google_duration_to_minutes(duration_text)
+
+    distance_miles = None
+    if isinstance(distance_meters, (int, float)):
+        distance_miles = round(distance_meters / 1609.344, 2)
+    
+    return {
+        "distance_miles": distance_miles,
+        "distance_meters": distance_meters,
+        "duration_minutes": duration_minutes,
+        "duration_text": duration_text,
+    }
 
 @app.post("/ai/itinerary", response_model=AIItineraryResponse)
 async def ai_itinerary(body: ItineraryRequest):
