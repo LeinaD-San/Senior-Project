@@ -919,8 +919,15 @@ async def recommended_places(payload: recommendedPlacesRequest):
                 profile = profile,
                 template_description=None,
             )
+
+            places = rank_places_for_profile(
+                places=places,
+                profile=profile,
+                interest=interest,
+            )
             grouped_results.append(places)
-        except Exception:
+        except Exception as e:
+            print(f'recommended_places error for{interest}:', repr(e))
             grouped_results.append([])
     
     merged = []
@@ -930,7 +937,9 @@ async def recommended_places(payload: recommendedPlacesRequest):
         for group in grouped_results:
             if i < len(group):
                 merged.append(group[i])
+
     unique = dedupe_places_by_id(merged)
+    ranked = rank_places_for_profile(unique, profile)
 
     return {
         "destination": destination,
@@ -1268,16 +1277,110 @@ def dedupe_places_by_id(places: list[dict]) -> list[dict]:
     seen = set()
     unique = []
 
-    for place in places:
-        place_id = place.get('place_id')
-        fallback_key = f'{place.get('name', '')}|{place.get('address', '')}'
+    for place in places or []:
+        if not isinstance(place, dict):
+            continue
+
+        place_id = place.get("place_id")
+        fallback_key = f"{place.get('name', '')}|{place.get('address', '')}"
 
         key = place_id or fallback_key
         if not key or key in seen:
             continue
+
         seen.add(key)
         unique.append(place)
+
     return unique
+
+def score_place_for_profile(place: dict, profile: Optional[TripProfile] = None, interest: Optional[str]=None) -> float:
+    profile = profile or TripProfile()
+
+    score = 0.0
+
+    rating = place.get('rating')
+    if isinstance(rating, (int, float)):
+        score += rating * 10
+
+    user_ratings_total = place.get('user_rating_total') or place.get('reviews') or 0
+    if isinstance(user_ratings_total, (int, float)):
+        score += min(user_ratings_total, 1000)/100
+    price_level = place.get('price_level')
+
+    if profile.budget == 'low':
+        if price_level in (0,1,2, None):
+            score += 8
+        elif price_level in (3,4):
+            score -= 8
+        
+    elif profile.budget == 'medium':
+        if price_level in (1,2,None):
+            score += 5
+        elif price_level == 4:
+            score -= 4
+    
+    elif profile.budget == 'high':
+        if price_level in (2,3,4):
+            score += 5
+    
+    name = str(place.get('name') or '').lower()
+    address = str(place.get('address') or '').lower()
+    types = ' '.join(place.get('types') or []).lower()
+    blob = f'{name} {address} {types}'
+
+    if interest:
+        interest = interest.lower()
+
+        if interest == "coffee" and any(word in blob for word in ["coffee", "cafe", "espresso"]):
+            score += 10
+
+        if interest == "food" and any(word in blob for word in ["restaurant", "food", "grill", "kitchen", "taqueria", "cafe"]):
+            score += 10
+
+        if interest == "parks" and any(word in blob for word in ["park", "garden", "nature", "trail"]):
+            score += 10
+
+        if interest == "museums" and any(word in blob for word in ["museum", "gallery", "art", "exhibit"]):
+            score += 10
+
+        if interest == "history" and any(word in blob for word in ["heritage", "historic", "history", "museum", "landmark"]):
+            score += 10
+
+        if interest == "nightlife" and any(word in blob for word in ["bar", "lounge", "brewery", "nightclub"]):
+            score += 10
+
+        if interest == "shopping" and any(word in blob for word in ["mall", "market", "shop", "store", "boutique"]):
+            score += 10
+
+        if interest == "outdoors" and any(word in blob for word in ["outdoor", "trail", "nature", "park", "garden"]):
+            score += 10
+
+        if profile.food_focus and any(word in blob for word in ["restaurant", "food", "cafe", "coffee", "grill", "kitchen"]):
+            score += 4
+
+    return score
+
+def rank_places_for_profile(
+    places: list[dict],
+    profile: Optional[TripProfile] = None, 
+    interest: Optional[str] = None,
+) -> list[dict]:
+    ranked = []
+
+    for place in places:
+        place_copy = dict(place)
+        place_copy['score'] = round(score_place_for_profile(place_copy, profile, interest),2)
+        ranked.append(place_copy)
+
+    ranked.sort(
+        key=lambda p: (
+            p.get('score', 0),
+            p.get('rating') or 0,
+        ),
+        reverse=True,
+    )
+    return ranked
+
 
 
 @app.post("/ai/replace-stop")
