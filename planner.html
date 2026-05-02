@@ -1472,36 +1472,92 @@
 
     async function loadTripById(tripId) {
       const trip = await authFetch(`/trips/${tripId}`);
-      const maxDay = Math.max(1, ...(trip.items || []).map((i) => i.day || 1));
+
+      const savedDays = Number(trip.days);
+      const itemMaxDay = Math.max(
+        1,
+        ...(trip.items || []).map((i) => Number(i.day) || 1)
+      );
+
+      const totalDays =
+        Number.isFinite(savedDays) && savedDays >= 1 && savedDays <= 7
+          ? savedDays
+          : itemMaxDay;
+
       tripState.destination = trip.destination || '';
-      setTripTitle(trip.title || (tripState.destination ? `Trip to ${tripState.destination}` : 'Trip'));
-      document.getElementById('destinationInput').value = tripState.destination;
-      setupCharLeftCounters();
-      restoreSavedInterestPills(trip.interests || []);
-      tripState.activeDay = 1;
       tripState.currentTripId = trip.id;
-      localStorage.setItem('tragent_last_trip_id', String(trip.id));
-      localStorage.setItem('tragent_last_trip_title', String(trip.title || '').slice(0, 200));
+      tripState.activeDay = 1;
+
+      setTripTitle(
+        trip.title ||
+        (tripState.destination ? `Trip to ${tripState.destination}` : 'Trip')
+      );
+
+      const destinationInput = document.getElementById('destinationInput');
+      if (destinationInput) {
+        destinationInput.value = tripState.destination;
+      }
+
+      personalizationProfile = {
+        group_type: trip.group_type || 'solo',
+        pace: trip.pace || 'balanced',
+        budget: trip.budget || 'medium',
+        place_style: trip.place_style || 'mix',
+        food_focus:
+          typeof trip.food_focus === 'boolean'
+            ? trip.food_focus
+            : String(trip.food_focus ?? 'true') === 'true',
+      };
+
+      restoreSavedInterestPills(trip.interests || []);
+
+      tripState.days = totalDays;
       tripState.itemsByDay = {};
-      for (let d = 1; d <= maxDay; d++) tripState.itemsByDay[d] = [];
-      (trip.items || []).forEach((i) => {
-        if (!tripState.itemsByDay[i.day]) tripState.itemsByDay[i.day] = [];
-        tripState.itemsByDay[i.day].push({
-          id: i.id,
-          position: i.position,
-          place_id: i.place_id,
-          name: i.name,
-          address: i.address,
-          rating: i.rating,
-          lat: i.lat,
-          lng: i.lng,
-          notes: i.notes,
-          completed: i.completed,
-          arrival_time: i.arrival_time || null,
-          departure_time: i.departure_time || null,
+
+      for (let d = 1; d <= totalDays; d++) {
+        tripState.itemsByDay[d] = [];
+      }
+
+      (trip.items || []).forEach((item) => {
+        const day = Number(item.day) || 1;
+
+        if (!tripState.itemsByDay[day]) {
+          tripState.itemsByDay[day] = [];
+        }
+
+        tripState.itemsByDay[day].push({
+          id: item.id,
+          position: item.position,
+          place_id: item.place_id,
+          name: item.name,
+          address: item.address,
+          rating: item.rating,
+          lat: item.lat,
+          lng: item.lng,
+          notes: item.notes || '',
+          completed: !!item.completed,
+          arrival_time: item.arrival_time || null,
+          departure_time: item.departure_time || null,
         });
       });
-      resetDays(maxDay);
+
+      Object.keys(tripState.itemsByDay).forEach((day) => {
+        tripState.itemsByDay[day].sort((a, b) => {
+          return (a.position || 0) - (b.position || 0);
+        });
+      });
+
+      localStorage.setItem('tragent_last_trip_id', String(trip.id));
+      localStorage.setItem(
+        'tragent_last_trip_title',
+        String(trip.title || getTripTitle() || '').slice(0, 200)
+      );
+
+      initDays();
+      renderDays();
+      renderItinerary();
+      renderPlannerProfileSummary();
+      setupCharLeftCounters();
 
       await runSearch();
     }
@@ -2355,9 +2411,11 @@ async function runSearch() {
         url.searchParams.delete('autosave');
         window.history.replaceState({}, '', url.toString());
       }
+      /*
       tripState.currentTripId = null;
       for (let d = 1; d <= tripState.days; d++) tripState.itemsByDay[d] = [];
       tripState.activeDay = 1;
+      */
       renderDays();
       renderItinerary();
       renderResultsPage();
@@ -2799,13 +2857,22 @@ if (getToken()) {
 }
 
 const tripIdParam = params.get('trip_id');
-if (getToken() && tripIdParam) {
+
+if (tripIdParam){
   const tripId = Number(tripIdParam);
-  if (Number.isFinite(tripId) && tripId > 0) {
-    loadTripById(tripId).catch(() => {});
+
+  if (!getToken()){
+    window.location.href = `/login?next=${encodeURIComponent(currentNextUrl())}`;
+  } else if (Number.isFinite(tripId) && tripId > 0){
+    loadTripById(tripId).catch((err) => {
+      console.error('Failed to load saved trip:', err);
+      uiNotify(
+        'Could not open trip',
+        'This saved trip could not be loaded. Please try again from My Trips.'
+      );
+    });
   }
 }
-
 
 
 const autogenParam = params.get('autogen');
