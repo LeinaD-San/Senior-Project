@@ -7,6 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700&display=swap" rel="stylesheet">
   <style>
     :root {
       --bg:#ffffff;
@@ -121,6 +122,49 @@
     }
     .brandLogo svg{width:22px;height:22px;display:block}
 
+    .brand{
+      display:flex;
+      align-items:center;
+      gap:6px;
+      text-decoration:none;
+      color:var(--ink);
+      white-space:nowrap;
+    }
+
+    .brand:visited,
+    .brand:hover,
+    .brand:active{
+      text-decoration:none;
+      color:var(--ink);
+    }
+
+    .brand:hover{
+      opacity:.9;
+    }
+
+    .brandLogoImg{
+      width:42px;
+      height:42px;
+      object-fit:contain;
+      display:block;
+      background:transparent;
+      flex-shrink:0;
+    }
+
+    .brandText{
+      font-family:'Montserrat', Inter, ui-sans-serif, system-ui, sans-serif;
+      font-size:30px;
+      font-weight:600;
+      color:var(--ink);
+      line-height:1;
+      letter-spacing:.01em;
+      white-space:nowrap;
+    }
+
+    .brandTextLight{
+      font-weight:200;
+    }
+
     .hero {
       position: relative; z-index: 2;
       flex: 1;
@@ -157,8 +201,7 @@
 
     .rotating-word {
       display: inline-block;
-      min-width: 12ch;
-      transition: opacity 220ms ease, transform 220ms ease;
+      transition: opacity 120ms ease, transform 120ms ease;
       will-change: opacity, transform;
     }
 
@@ -475,15 +518,12 @@
   <!-- landing page -->
   <div id="screen-landing">
     <nav class="nav">
-      <a class="brand" href="/">
-        <div class="brandLogo" aria-hidden="true">
-          <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-            <path d="M12 22s7-4.6 7-12a7 7 0 1 0-14 0c0 7.4 7 12 7 12Z" stroke="white" stroke-width="2" stroke-linejoin="round"/>
-            <path d="M12 13.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" stroke="white" stroke-width="2"/>
-            <path d="M12 8.2l1.8 3.6-3.6-1.8L12 8.2Z" fill="white"/>
-          </svg>
-        </div>
-        <span>trAgent</span>
+
+      <a href="/" class="brand">
+        <img src="/static/images/tragent-icon2.png?v=4" alt="trAgent" class="brandLogoImg" />
+        <span class="brandText"><span class="brandTextLight">tr</span>Agent</span>
+      </a>
+
       </a>
       <div style="display:flex;gap:10px;align-items:center;">
         <a class="btn btn-ghost" id="signInLink" href="/login">Sign in</a>

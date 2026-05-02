@@ -34,6 +34,9 @@ import time
 
 from typing import Optional
 
+from fastapi.staticfiles import StaticFiles
+
+
 BASE_DIR = Path(__file__).resolve().parent
 
 load_dotenv()
@@ -41,6 +44,8 @@ load_dotenv()
 openai_client = OpenAI() if OpenAI and os.getenv("OPENAI_API_KEY") else None
 
 app = FastAPI(title="Travel Agent API")
+
+app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 
 
 @app.exception_handler(OperationalError)

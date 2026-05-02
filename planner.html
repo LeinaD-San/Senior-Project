@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>trAgent Planner</title>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@500;600;700&display=swap" rel="stylesheet">
   <style>
     :root{
       --bg:#ffffff;
@@ -31,11 +32,45 @@
       display:flex;align-items:center;justify-content:space-between;
       padding:16px 22px;
     }
-    .brand{display:flex;gap:10px;align-items:center;font-weight:900;letter-spacing:-.02em}
-    .brandDot{
-      width:34px;height:34px;border-radius:12px;
-      background:linear-gradient(135deg,var(--orange),var(--orange2));
-      box-shadow:0 18px 50px rgba(255,106,0,.25);
+    .brand{
+      display:flex;
+      align-items:center;
+      gap:6px;
+      text-decoration:none;
+      color:var(--ink);
+      white-space:nowrap;
+    }
+
+    .brandLogoImg{
+      width:42px;
+      height:42px;
+      object-fit:contain;
+      display:block;
+      background:transparent;
+      flex-shrink:0;
+    }
+
+    .brandText{
+      font-family:'Montserrat', system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+      font-size:30px;
+      font-weight:600;
+      color:var(--ink);
+      line-height:1;
+      letter-spacing:.01em;
+      white-space:nowrap;
+    }
+
+    .brandTextLight{
+      font-weight:500;
+    }
+
+    .brandPageLabel{
+      font-family:'Montserrat', system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+      font-size:18px;
+      font-weight:600;
+      color:var(--muted);
+      line-height:1;
+      margin-left:4px;
     }
     .topActions a{color:var(--muted);text-decoration:none;font-weight:700}
     .topActions a:hover{color:var(--ink)}
@@ -528,10 +563,13 @@
 
 <body>
   <header>
+
     <div class="brand">
-      <div class="brandDot" aria-hidden="true"></div>
-      <div>trAgent Planner</div>
-    </div>
+  <img src="/static/images/tragent-icon2.png?v=4" alt="trAgent" class="brandLogoImg" />
+  <span class="brandText"><span class="brandTextLight">tr</span>Agent</span>
+  <span class="brandPageLabel">Planner</span>
+</div>
+
     <div class="topActions">
       <a href="/">Back to home</a>
       <span style="padding:0 8px;color:rgba(11,18,32,.35)">|</span>
