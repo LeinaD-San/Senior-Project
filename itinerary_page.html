@@ -509,6 +509,18 @@
       font-size:12px;
       margin-top:2px;
     }
+    .destination-warning {
+      display: none;
+      margin-top: 12px;
+      padding: 14px 16px;
+      border-radius: 16px;
+      background: rgba(255, 106, 0, 0.10);
+      border: 1px solid rgba(255, 106, 0, 0.28);
+      color: #9a3f00;
+      font-weight: 700;
+      font-size: 0.95rem;
+      box-shadow: 0 14px 34px rgba(255, 106, 0, 0.10);
+    }
 
   </style>
 </head>
@@ -548,6 +560,10 @@
         </button>
         <div id="landingSuggestions" class="suggestList hidden"></div>
       </form>
+
+      <div id="destinationWarning" class="destination-warning">
+          Please enter a destination first so trAgent can build your trip.
+          </div>
 
       
 
@@ -1571,11 +1587,32 @@
 
     function openPersonalizationModal(){
       const modal = document.getElementById('personalizationModal');
+      const destinationInput = document.getElementById('landing-search');
+      const destinationWarning = document.getElementById('destinationWarning');
+      const planDestinationInput = document.getElementById('dest');
+
       console.log('openPersonalizationModal called', modal);
 
+      if (!destinationInput || !destinationInput.value.trim()){
+        if (destinationWarning){
+          destinationWarning.style.display = 'block';
+        }
+        if (destinationInput){
+          destinationInput.focus();
+        }
+        return;
+      }
+      if (destinationWarning) {
+        destinationWarning.style.display = 'none';
+      }
+
+      if (planDestinationInput){
+        planDestinationInput.value = destinationInput.value.trim();
+      }
       if (!modal) return;
+
       modal.classList.remove('hidden');
-      modal.style.display = 'flex'
+      modal.style.display = 'flex';
     }
     
     function closePersonalizationModal() {
@@ -1620,6 +1657,17 @@
       params.set('food_focus', String(personalizationProfile.food_focus));
 
       window.location.href = '/planner?' + params.toString();
+    }
+
+    const landingSearchInput = document.getElementById('landing-search');
+    const destinationWarning = document.getElementById('destinationWarning');
+
+    if (landingSearchInput && destinationWarning) {
+      landingSearchInput.addEventListener('input', function () {
+        if (landingSearchInput.value.trim()) {
+          destinationWarning.style.display = 'none';
+        }
+      });
     }
 
 
