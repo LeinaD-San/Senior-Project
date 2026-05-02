@@ -602,9 +602,28 @@
         </div>
 
         <div class="panelFoot">
-          <div style="display:flex; gap:10px;">
-            <button type="button" onclick="clearCurrentDay()" style="flex:1; border:none; padding:12px 14px; border-radius:14px; background:rgba(11,18,32,.08); font-weight:900; cursor:pointer;">Clear Day</button>
-            <button class="primary" id="saveBtn" onclick="saveTrip()" disabled style="flex:1">Save Trip</button>
+          <div style="display:flex; flex-direction:column; gap:10px;">
+            <button
+              type="button"
+              onclick="openCurrentDayInGoogleMaps()"
+              style="width:100%; border:none; padding:12px 14px; border-radius:14px; background:rgba(11,18,32,.08); font-weight:900; cursor:pointer;"
+            >
+              Open Day in Google Maps
+            </button>
+
+            <div style="display:flex; gap:10px;">
+              <button
+                type="button"
+                onclick="clearCurrentDay()"
+                style="flex:1; border:none; padding:12px 14px; border-radius:14px; background:rgba(11,18,32,.08); font-weight:900; cursor:pointer;"
+              >
+                Clear Day
+              </button>
+
+              <button class="primary" id="saveBtn" onclick="saveTrip()" disabled style="flex:1">
+                Save Trip
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -868,6 +887,52 @@
       if (miles === null) return null;
       const mph = 45;
       return Math.round((miles / mph) * 60);
+    }
+
+    function getCurrentDayStopsForMaps() {
+      return (tripState.itemsByDay[tripState.activeDay] || [])
+      .filter((place) => palce && (place.name || place.address || place.place_id));
+    }
+    function mapsPlaceLabel(place){
+      const name = String(place?.name || '').trim();
+      const address = String(place?.address || '').trim();
+
+      if (name && address) return `${name}, ${address}`;
+      return name || address || '';
+
+      const origin = mapsPlaceLabel(stops[0]);
+      const destination = mapsPlaceLabel(stops[stops.length -1]);
+      const waypoints = stops.slice(1, -1).map(mapsPlaceLabel).filter(Boolean);
+
+      const params = new URLSearchParams();
+      params.set('api', '1');
+      params.set('travelmode', 'driving');
+      params.set('origin', origin);
+      params.set('destintaion', destination);
+
+      if (waypoints.length){
+        params.set('waypoints', waypoints.join('|'));
+      }
+      return `https://www.google.com/maps/dir/?${params.toString()}`;
+    }
+
+    function openCurretntDayinGoogleMaps() {
+      const stops = getCurrentDayStopsForMaps();
+
+      if (stops.length < 2) {
+        uiNotify(
+          'Google Maps route'\
+          'Add at least two places to this day before opening direction.'
+        );
+        return;
+      }
+
+      const url = buildGoogleMapsRouteURL(tripState.activeDay);
+      if (!url){
+        uiNotify('Google Maps route', 'Could not build a route for this day.');
+        return;
+      }
+      window.open(url, '_blank', 'nooperner, noreferrer');
     }
 
     function findPlaceInOtherDay(placeId) {
