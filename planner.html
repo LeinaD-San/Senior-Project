@@ -891,7 +891,71 @@
 
     function getCurrentDayStopsForMaps() {
       return (tripState.itemsByDay[tripState.activeDay] || [])
-      .filter((place) => palce && (place.name || place.address || place.place_id));
+        .filter((place) => place && (place.name || place.address || place.place_id));
+    }
+
+    function mapsPlaceLabel(place) {
+      const name = String(place?.name || '').trim();
+      const address = String(place?.address || '').trim();
+
+      if (name && address) return `${name}, ${address}`;
+      return name || address || '';
+    }
+
+    function buildGoogleMapsDayRouteUrl(day = tripState.activeDay) {
+      const stops = (tripState.itemsByDay[day] || [])
+        .filter((place) => place && (place.name || place.address || place.place_id));
+
+      if (stops.length < 2) return '';
+
+      const origin = mapsPlaceLabel(stops[0]);
+      const destination = mapsPlaceLabel(stops[stops.length - 1]);
+      const waypoints = stops.slice(1, -1).map(mapsPlaceLabel).filter(Boolean);
+
+      const params = new URLSearchParams();
+      params.set('api', '1');
+      params.set('travelmode', 'driving');
+      params.set('origin', origin);
+      params.set('destination', destination);
+
+      if (waypoints.length) {
+        params.set('waypoints', waypoints.join('|'));
+      }
+
+      return `https://www.google.com/maps/dir/?${params.toString()}`;
+    }
+
+    function openCurrentDayInGoogleMaps() {
+      console.log('Open Maps clicked', {
+        activeDay: tripState.activeDay,
+        stops: tripState.itemsByDay[tripState.activeDay],
+      });
+
+      const stops = getCurrentDayStopsForMaps();
+
+      if (stops.length < 2) {
+        uiNotify(
+          'Google Maps route',
+          'Add at least two places to this day before opening directions.'
+        );
+        return;
+      }
+
+      const url = buildGoogleMapsDayRouteUrl(tripState.activeDay);
+      console.log('Google Maps route URL:', url);
+
+      if (!url) {
+        uiNotify('Google Maps route', 'Could not build a route for this day.');
+        return;
+      }
+
+      window.open(url, '_blank', 'noopener,noreferrer');
+    }
+
+
+    function getCurrentDayStopsForMaps() {
+      return (tripState.itemsByDay[tripState.activeDay] || [])
+      .filter((place) => place && (place.name || place.address || place.place_id));
     }
     function mapsPlaceLabel(place){
       const name = String(place?.name || '').trim();
