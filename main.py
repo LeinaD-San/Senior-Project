@@ -1036,7 +1036,7 @@ async def recommended_places(payload: recommendedPlacesRequest):
     return {
         "destination": destination,
         "interests": interests,
-        "results": unique[:max(1, min(payload.limit, 60))],
+        "results": ranked[:max(1, min(payload.limit, 60))],
     }
 
 
