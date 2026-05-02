@@ -921,8 +921,8 @@
 
       if (stops.length < 2) {
         uiNotify(
-          'Google Maps route'\
-          'Add at least two places to this day before opening direction.'
+          'Google Maps route',
+          'Add at least two places to this day before opening direction.',
         );
         return;
       }
@@ -1280,21 +1280,16 @@
     }
 
     tripState.destination = nextDestination;
-
-    if (!getTripTitle()) {
-      setTripTitle(`Trip to ${nextDestination}`);
-    }
+    setTripTitle(`Trip to ${nextDestination}`);
 
     const url = new URL(window.location.href);
     url.searchParams.set('dest', nextDestination);
     window.history.replaceState({}, '', url.toString());
 
-    const searchTerm = (document.getElementById('q').value || '').trim().slice(0, 120);
-
-    if (selectedCategories.size || searchTerm) {
-      await runSearch();
+    renderPlannerProfileSummary();
+    await runSearch();
     }
-  }
+  
     // auth helpers
     function getToken() {
       return localStorage.getItem('tragent_token');
