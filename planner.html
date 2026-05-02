@@ -1018,6 +1018,39 @@
       if (el) el.textContent = tripState.title || '';
     }
 
+
+    function formatTripDateLabel() {
+      const now = new Date();
+      return now.toLocaleDateString(undefined, {
+        month: 'short',
+        day: 'numeric',
+      });
+    }
+
+    function titleCaseInterest(value) {
+      return String(value || '')
+        .replaceAll('_', ' ')
+        .replace(/\b\w/g, (c) => c.toUpperCase());
+    }
+
+    function generateDefaultTripTitle(destination) {
+      const cleanDest = String(destination || 'Trip').trim();
+
+      const interests = getSelectedCategoryValues ? getSelectedCategoryValues() : [];
+      const interestLabel = interests.length
+        ? interests.slice(0, 2).map(titleCaseInterest).join(' + ')
+        : personalizationProfile.food_focus
+          ? 'Food + Local Spots'
+          : 'Local Spots';
+
+      const dayLabel = `${tripState.days} ${tripState.days === 1 ? 'day' : 'days'}`;
+      const dateLabel = formatTripDateLabel();
+
+      return `${cleanDest} · ${interestLabel} · ${dayLabel} · ${dateLabel}`;
+    }
+
+
+
     async function renameCurrentTrip() {
       const current = getTripTitle();
       openUiModal({
@@ -2343,8 +2376,8 @@ async function runSearch() {
       }
 
       const destination = (document.getElementById('destinationInput').value || tripState.destination || '').trim() || 'Destination';
-      const title = getTripTitle() || `Trip to ${destination}`;
-      if (!getTripTitle()) setTripTitle(title);
+      const title = getTripTitle() || generateDefaultTripTitle(destination);
+      if (!getTripTitle()){ setTripTitle(title);}
 
       const resTrip = await fetch('/trips', {
         method: 'POST',

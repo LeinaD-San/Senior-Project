@@ -763,6 +763,21 @@
       pills.appendChild(p2);
     }
 
+    function getTripSubTitle(t){
+      const parts = [];
+
+      if (t.destination) {
+        parts.push(t.destination);
+      }
+      if(t.days){
+        parts.push(`${t.days} ${Number(t.days) === 1 ? 'day' : 'days'}`);
+      }
+      if(Array.isArray(t.interests) && t.interests.length){
+        parts.push(t.interests.slice(0,3).join(', '));
+      }
+      return parts.join(' . ');
+    }
+
     async function loadTrips() {
       const trips = await authFetch('/trips');
       const list = document.getElementById('tripsList');
@@ -779,7 +794,7 @@
         row.innerHTML = `
           <div class="meta">
             <div class="name">${escapeHtml(t.title || 'Trip')}</div>
-            <div class="desc">${escapeHtml(t.destination || '')}</div>
+            <div class="desc">${escapeHtml(getTripSubTitle(t))}</div>
           </div>
           <button class="btn" type="button">Open</button>
           <button class="btn danger" type="button">Delete</button>
