@@ -1091,10 +1091,8 @@
       }, 0);
     }
 
-    // cache for fetched detail photos so we don't re-fetch
     const photoCache = {};
 
-    // fetch full photo list from details endpoint
     async function fetchPlacePhotos(placeId) {
       if (photoCache[placeId]) return photoCache[placeId];
       try {
@@ -1567,6 +1565,7 @@
           rating: item.rating,
           lat: item.lat,
           lng: item.lng,
+          photo_url: item.photo_url || '',
           notes: item.notes || '',
           completed: !!item.completed,
           arrival_time: item.arrival_time || null,
@@ -2365,6 +2364,39 @@ async function runSearch() {
       }
     }
 
+    const savePhotoCache = {};
+
+    async function getFirstPhotoURLForSave(item) {
+      if (!item) return '';
+
+      if (item.photo_url) return item.photo_url;
+      if (item.photoUrl) return item.photoUrl;
+      if (item.photo) return item.photo;
+
+      if (Array.isArray(item.photos) && item.photos.length){
+        return item.photos[0];
+      }
+
+      if(!item.place_id) return '';
+
+      if(savePhotoCache[item.place_id]){
+        return savePhotoCache[item.place_id];
+      }
+
+      try {
+        const res = await fetch(`/places/details/${encodeURIComponent(item.place_id)}`);
+        if (!res.ok) return '';
+
+        const data = await res.json().catch(() => ({}));
+        const photoUrl = Array.isArray(data.photos) && data.photos.length
+        ? data.photos[0]
+        : '';
+        savePhotoCache[item.place_id] = photoUrl || '';
+        return photoUrl || '';
+      } catch {
+        return '';
+      }
+    }
 
     async function saveTrip() {
       const token = getToken();
@@ -2409,7 +2441,9 @@ async function runSearch() {
 
       for (const [dayStr, items] of Object.entries(tripState.itemsByDay)) {
         const day = parseInt(dayStr);
+
         for (const item of items) {
+          const photoUrl = await getFirstPhotoURLForSave(item);
           const resItem = await fetch(`/trips/${trip.id}/items`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
@@ -2422,6 +2456,7 @@ async function runSearch() {
               lng: item.lng,
               address: item.address,
               rating: item.rating,
+              photo_url: item.photo_url || item.photoUrl || item.photo || '',
               arrival_time: item.arrival_time || null,
               departure_time: item.departure_time || null,
             }),
