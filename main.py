@@ -95,6 +95,7 @@ def on_startup():
         with engine.begin() as conn:
             conn.execute(text("ALTER TABLE trip_item ADD COLUMN IF NOT EXISTS arrival_time VARCHAR"))
             conn.execute(text("ALTER TABLE trip_item ADD COLUMN IF NOT EXISTS departure_time VARCHAR"))
+            conn.execute(text("ALTER TABLE trip_item ADD COLUMN IF NOT EXISTS photo_url TEXT"))
             
             #This allows the existing postgres table gain the new columns without manually rebuilding the database
             conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS name VARCHAR"))
@@ -193,6 +194,7 @@ class TripItemCreate(BaseModel):
     lng: Optional[float] = None
     address: Optional[str] = None
     rating: Optional[float] = None
+    photo_url : Optional[str] = Field(default= None, max_length=2000)
 
     arrival_time: Optional[str] = Field(default=None, max_length=5)
     departure_time: Optional[str] = Field(default=None, max_length=5)
@@ -635,6 +637,7 @@ def add_trip_item(trip_id: int, payload: TripItemCreate, db: db_dependency, user
         lng=payload.lng,
         address =payload.address,
         rating=payload.rating,
+        photo_url=payload.photo_url,
         arrival_time=arrival_time,
         departure_time=departure_time,
     )
@@ -655,6 +658,7 @@ def add_trip_item(trip_id: int, payload: TripItemCreate, db: db_dependency, user
         "lng": item.lng,
         "address": item.address,
         "rating": item.rating,
+        "photo_url": item.photo_url,
         "arrival_time": item.arrival_time,
         "departure_time": item.departure_time,
     }
@@ -702,6 +706,7 @@ def get_trip(trip_id: int, db: db_dependency, user: models.User = Depends(get_cu
                 "lng": i.lng,
                 "address": i.address,
                 "rating": i.rating,
+                "photo_url": i.photo_url,
                 "arrival_time": i.arrival_time,
                 "departure_time": i.departure_time,
             }

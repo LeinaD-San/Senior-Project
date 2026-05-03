@@ -187,16 +187,32 @@
 
     .hero h1 {
       font-family: var(--font-display);
-      font-size: clamp(40px, 6.5vw, 76px);
+      font-size: clamp(40px, 6vw, 76px);
       font-weight: 700;
-      line-height: 1.08;
+      line-height: 1.02;
       letter-spacing: -1.5px;
-      max-width: 680px;
+      max-width: 900px;
+      margin: 0 auto;
+      text-align: center;
     }
-    .hero h1 em {
-      font-style: italic;
-      color: var(--terracotta);
-      font-weight: 500;
+
+    .hero-line-1,
+    .hero-line-2,
+    .hero-line-3 {
+      display: block;
+    }
+
+    .hero-line-2 {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 1.1em;
+    }
+
+    .rotating-word-wrap {
+      display: inline-block;
+      min-width: 12.5ch;
+      text-align: center;
     }
 
     .rotating-word {
@@ -209,6 +225,19 @@
       opacity: 0;
       transform: translateY(-0.15em);
     }
+
+    .hero-line-3 {
+      margin-top: -0.02em;
+    }
+
+    .hero-em {
+      display: inline-block;
+      font-style: italic;
+      color: var(--terracotta);
+      font-weight: 500;
+      white-space: nowrap;
+    }
+
 
     @media (prefers-reduced-motion: reduce) {
       .rotating-word {
@@ -536,7 +565,6 @@
         <span class="brandText"><span class="brandTextLight">tr</span>Agent</span>
       </a>
 
-      </a>
       <div style="display:flex;gap:10px;align-items:center;">
         <a class="btn btn-ghost" id="signInLink" href="/login">Sign in</a>
         <a class="btn btn-ghost hidden" id="accountLink" href="/account">My account</a>
@@ -545,8 +573,16 @@
     </nav>
 
     <div class="hero">
-      <h1 >
-        Find your next<br><span class="rotating-word" id="rotating-word">favorite</span> <em>local spot</em>
+      <h1>
+        <span class="hero-line-1">Find your next</span>
+        <span class="hero-line-2">
+          <span class="rotating-word-wrap">
+            <span class="rotating-word" id="rotating-word">favorite</span>
+          </span>
+        </span>
+        <span class="hero-line-3">
+          <em class="hero-em">local spot</em>
+        </span>
       </h1>
 
       <p class="hero-sub">
@@ -705,7 +741,6 @@
   </div>
 
 
-  </script>
       <!--personalization modal-->
     <div id="personalizationModal" class="hidden" style="
       position:fixed;
@@ -859,22 +894,31 @@
       });
     }
 //revolving word function
+    let rotatingWordTimer = null;
+
     function startRotatingWord() {
       const el = document.getElementById('rotating-word');
       if (!el) return;
 
-      const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-      if (reducedMotion) return;
-
       const words = ROTATING_WORDS.filter(Boolean);
       if (words.length <= 1) return;
 
-      let idx = 0;
-      el.textContent = words[idx];
+      if (rotatingWordTimer) {
+        clearInterval(rotatingWordTimer);
+      }
 
-      window.setInterval(() => {
+      let idx = words.indexOf(el.textContent.trim());
+
+      if (idx < 0) {
+        idx = 0;
+        el.textContent = words[idx];
+      }
+
+      rotatingWordTimer = window.setInterval(() => {
         idx = (idx + 1) % words.length;
+
         el.classList.add('is-exiting');
+
         window.setTimeout(() => {
           el.textContent = words[idx];
           el.classList.remove('is-exiting');
@@ -951,43 +995,6 @@
       window.scrollTo(0, 0);
     }
 
-    startRotatingWord();
-    function formatCharLeftText(left) {
-      if (left === 1) return '1 character left';
-      return `${left} characters left`;
-    }
-
-    function bindCharLeftCounter(inputEl, counterEl) {
-      if (!inputEl || !counterEl) return;
-      const limit = Number(inputEl.getAttribute('maxlength'));
-      if (!Number.isFinite(limit) || limit <= 0) return;
-
-      const update = () => {
-        const value = inputEl.value || '';
-        const left = Math.max(0, limit - value.length);
-        counterEl.textContent = formatCharLeftText(left);
-      };
-
-      inputEl.addEventListener('input', update);
-      update();
-    }
-
-    function setupCharLeftCounters() {
-      document.querySelectorAll('[data-char-left-for]').forEach((counterEl) => {
-        const id = counterEl.getAttribute('data-char-left-for');
-        if (id === 'note') return;
-        const inputEl = document.getElementById(id);
-        bindCharLeftCounter(inputEl, counterEl);
-      });
-
-      document.querySelectorAll('.note-wrap').forEach((wrap) => {
-        const inputEl = wrap.querySelector('textarea.note-input');
-        const counterEl = wrap.querySelector('[data-char-left-for="note"]');
-        bindCharLeftCounter(inputEl, counterEl);
-      });
-    }
-
-    startRotatingWord();
     function formatCharLeftText(left) {
       if (left === 1) return '1 character left';
       return `${left} characters left`;

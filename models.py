@@ -74,6 +74,7 @@ class TripItem(Base):
     lng = Column(Float,nullable=True)
     address = Column(String, nullable=True)
     rating = Column(Float, nullable=True)
+    photo_url = Column(Text, nullable=True)
 
     arrival_time = Column(String, nullable=True)
     departure_time = Column(String, nullable=True)
