@@ -889,28 +889,49 @@
       return Math.round((miles / mph) * 60);
     }
 
-    function getCurrentDayStopsForMaps() {
-      return (tripState.itemsByDay[tripState.activeDay] || [])
-        .filter((place) => place && (place.name || place.address || place.place_id));
+    function getCurrentDayStopsForMaps(day = tripState.activeDay) {
+      const stops = tripState.itemsByDay?.[day] || [];
+
+      return stops
+        .filter((place) => place && (place.name || place.address || place.place_id))
+        .sort((a, b) => {
+          const posA = Number(a.position) || 0;
+          const posB = Number(b.position) || 0;
+          return posA - posB;
+        });
     }
 
     function mapsPlaceLabel(place) {
       const name = String(place?.name || '').trim();
       const address = String(place?.address || '').trim();
 
-      if (name && address) return `${name}, ${address}`;
-      return name || address || '';
+      if (name && address) {
+        return `${name}, ${address}`;
+      }
+
+      if (address) {
+        return address;
+      }
+
+      if (name) {
+        return name;
+      }
+
+      return '';
     }
 
     function buildGoogleMapsDayRouteUrl(day = tripState.activeDay) {
-      const stops = (tripState.itemsByDay[day] || [])
-        .filter((place) => place && (place.name || place.address || place.place_id));
+      const stops = getCurrentDayStopsForMaps(day)
+        .map((place) => mapsPlaceLabel(place))
+        .filter(Boolean);
 
-      if (stops.length < 2) return '';
+      if (stops.length < 2) {
+        return '';
+      }
 
-      const origin = mapsPlaceLabel(stops[0]);
-      const destination = mapsPlaceLabel(stops[stops.length - 1]);
-      const waypoints = stops.slice(1, -1).map(mapsPlaceLabel).filter(Boolean);
+      const origin = stops[0];
+      const destination = stops[stops.length - 1];
+      const waypoints = stops.slice(1, -1);
 
       const params = new URLSearchParams();
       params.set('api', '1');
@@ -926,26 +947,24 @@
     }
 
     function openCurrentDayInGoogleMaps() {
-      console.log('Open Maps clicked', {
-        activeDay: tripState.activeDay,
-        stops: tripState.itemsByDay[tripState.activeDay],
-      });
-
-      const stops = getCurrentDayStopsForMaps();
+      const day = tripState.activeDay;
+      const stops = getCurrentDayStopsForMaps(day);
 
       if (stops.length < 2) {
         uiNotify(
           'Google Maps route',
-          'Add at least two places to this day before opening directions.'
+          `Add at least two places to Day ${day} before opening directions.`
         );
         return;
       }
 
-      const url = buildGoogleMapsDayRouteUrl(tripState.activeDay);
-      console.log('Google Maps route URL:', url);
+      const url = buildGoogleMapsDayRouteUrl(day);
 
       if (!url) {
-        uiNotify('Google Maps route', 'Could not build a route for this day.');
+        uiNotify(
+          'Google Maps route',
+          `Could not build a route for Day ${day}. Make sure the stops have names or addresses.`
+        );
         return;
       }
 
@@ -953,58 +972,16 @@
     }
 
 
-    function getCurrentDayStopsForMaps() {
-      return (tripState.itemsByDay[tripState.activeDay] || [])
-      .filter((place) => place && (place.name || place.address || place.place_id));
-    }
-    function mapsPlaceLabel(place){
-      const name = String(place?.name || '').trim();
-      const address = String(place?.address || '').trim();
-
-      if (name && address) return `${name}, ${address}`;
-      return name || address || '';
-
-      const origin = mapsPlaceLabel(stops[0]);
-      const destination = mapsPlaceLabel(stops[stops.length -1]);
-      const waypoints = stops.slice(1, -1).map(mapsPlaceLabel).filter(Boolean);
-
-      const params = new URLSearchParams();
-      params.set('api', '1');
-      params.set('travelmode', 'driving');
-      params.set('origin', origin);
-      params.set('destintaion', destination);
-
-      if (waypoints.length){
-        params.set('waypoints', waypoints.join('|'));
-      }
-      return `https://www.google.com/maps/dir/?${params.toString()}`;
-    }
-
-    function openCurretntDayinGoogleMaps() {
-      const stops = getCurrentDayStopsForMaps();
-
-      if (stops.length < 2) {
-        uiNotify(
-          'Google Maps route',
-          'Add at least two places to this day before opening direction.',
-        );
-        return;
-      }
-
-      const url = buildGoogleMapsRouteURL(tripState.activeDay);
-      if (!url){
-        uiNotify('Google Maps route', 'Could not build a route for this day.');
-        return;
-      }
-      window.open(url, '_blank', 'nooperner, noreferrer');
-    }
-
     function findPlaceInOtherDay(placeId) {
       for (const [dayStr, items] of Object.entries(tripState.itemsByDay)) {
         const day = Number(dayStr);
         const found = (items || []).find((x) => x.place_id === placeId);
-        if (found) return { day, item: found };
+
+        if (found) {
+          return { day, item: found };
+        }
       }
+
       return null;
     }
 
@@ -1014,10 +991,12 @@
 
     function setTripTitle(title) {
       tripState.title = (title || '').slice(0, 200);
-      const el = document.getElementById('tripTitleDisplay');
-      if (el) el.textContent = tripState.title || '';
-    }
 
+      const el = document.getElementById('tripTitleDisplay');
+      if (el) {
+        el.textContent = tripState.title || '';
+      }
+    }
 
     function formatTripDateLabel() {
       const now = new Date();
@@ -1182,7 +1161,7 @@
         spinner.remove();
         loading = false;
 
-        if (photos && photos.length > 1) {
+        if (Array.isArray(photos) && photos.length >0 ) {
           rebuildCarousel(container, photos);
           show(0);
           loaded = true;
@@ -1223,16 +1202,35 @@
 
       bindNav();
 
-      // also lazy-load on hover so photos are ready when user clicks
-      let hoverTriggered = false;
-      container.addEventListener('mouseenter', () => {
-        if (!hoverTriggered) {
-          hoverTriggered = true;
-          ensureLoaded();
-        }
-      });
+
+    // also lazy-load on hover so photos are ready when user clicks
+    let autoLoadStarted = false;
+
+    function startPhotoLoad(){
+      if (autoLoadStarted)return;
+      autoLoadStarted = true;
+      ensureLoaded();
     }
 
+    if ('IntersectionObeserver' in window) {
+      const observer = new IntersectionObserver((entries) => {
+        const visible = entries.some((entry) => entry.isIntersecting);
+
+        if (visible) {
+          observer.disconnect();
+          startPhotoLoad();
+        }
+      },{
+        root:null,
+        rootMargin: '250px',
+        threshold: 0.01,
+      });
+      observer.observe(container);
+    } else {
+      setTimeout(startPhotoLoad, 250);
+    }
+    container.addEventListener('mouseenter', startPhotoLoad);
+  }
 
     //  carousel helper for details modal
     function buildModalCarousel(photos) {
@@ -1826,7 +1824,16 @@
       const dayItems = tripState.itemsByDay[tripState.activeDay];
       const prev = dayItems[dayItems.length - 1];
 
-      dayItems.push({ ...place, completed: false, notes: '', position: dayItems.length + 1, arrival_time: null, departure_time: null });
+      
+      dayItems.push({
+        ...place,
+        completed: false,
+        notes: '',
+        position: dayItems.length + 1,
+        arrival_time: null,
+        departure_time: null
+      });
+
       renderItinerary();
       renderResults(lastResults);
 
@@ -2091,7 +2098,7 @@
           const navHtml = `<button class="carouselBtn left">‹</button><button class="carouselBtn right">›</button>`;
           carouselHtml = `<div class="carousel" data-place-id="${escapeHtml(p.place_id)}">${imgsHtml}${navHtml}${dotsHtml}</div>`;
         } else {
-          carouselHtml = `<div class="carousel" data-place-id="${escapeHtml(p.place_id)}">Photo</div>`;
+          carouselHtml = `<div class="carousel" data-place-id="${escapeHtml(p.place_id)}"> No Photo available</div>`;
         }
 
         console.log('PLACE PRICE DEBUG:', p.name, p.price_Level,p);
@@ -2180,23 +2187,31 @@
     }
 
     function interleaveResults(groupedResults) {
-      const groups = groupedResults.filter(g => g.length > 0);
-      if (!groups.length) return [];
+      const groups = (groupedResults || []).filter((g) => Array.isArray(g) && g.length > 0);
+
+      if (!groups.length) {
+        return [];
+      }
 
       const result = [];
       const seen = new Set();
-      const maxLen = Math.max(...groups.map(g => g.length));
+      const maxLen = Math.max(...groups.map((g) => g.length));
 
       for (let i = 0; i < maxLen; i++) {
         for (const group of groups) {
-          if (i < group.length) {
-            const p = group[i];
-            if (!p.place_id || seen.has(p.place_id)) continue;
-            seen.add(p.place_id);
-            result.push(p);
-          }
+          if (i >= group.length) continue;
+
+          const p = group[i];
+          if (!p) continue;
+
+          const key = p.place_id || `${p.name || ''}|${p.address || ''}`;
+          if (!key || seen.has(key)) continue;
+
+          seen.add(key);
+          result.push(p);
         }
       }
+
       return result;
     }
 
@@ -2912,7 +2927,7 @@ if (destParam) {
   }
   runSearch();
 } else if (qParam) {
-  document.getElementById('q').value = qParams;
+  document.getElementById('q').value = qParam;
   runSearch();
 }
 
