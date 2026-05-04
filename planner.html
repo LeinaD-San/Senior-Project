@@ -2137,6 +2137,113 @@
       renderPagination(root);
     }
 
+    function cleanSearchText(value) {
+      return String(value || '')
+        .trim()
+        .replace(/\s+/g, ' ')
+        .replace(/[“”]/g, '"')
+        .replace(/[‘’]/g, "'")
+        .replace(/[!?]+$/g, '')
+        .slice(0, 120);
+    }
+
+    function normalizeDestinationText(value) {
+      return cleanSearchText(value)
+        .replace(/\s*,\s*/g, ', ')
+        .replace(/\s+/g, ' ');
+    }
+
+    function stripDestinationFromSearch(term, destination) {
+      let clean = cleanSearchText(term);
+      const dest = normalizeDestinationText(destination);
+
+      if (!clean || !dest) return clean;
+
+      const escapedDest = dest.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+      clean = clean
+        .replace(new RegExp(`\\b(in|near|around)\\s+${escapedDest}\\b`, 'i'), '')
+        .replace(/\bnear me\b/gi, '')
+        .replace(/\baround me\b/gi, '')
+        .replace(/\bin my area\b/gi, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+      return clean;
+    }
+
+    function normalizeSearchTerm(term, destination) {
+      let clean = stripDestinationFromSearch(term, destination).toLowerCase();
+
+      const aliases = {
+        food: 'restaurants',
+        eats: 'restaurants',
+        restaurant: 'restaurants',
+        restaurants: 'restaurants',
+        taco: 'tacos',
+        tacos: 'tacos',
+        coffee: 'coffee shops',
+        cafe: 'coffee shops',
+        cafes: 'coffee shops',
+        museum: 'museums',
+        museums: 'museums',
+        park: 'parks',
+        parks: 'parks',
+        nightlife: 'bars nightlife',
+        bar: 'bars nightlife',
+        bars: 'bars nightlife',
+        shopping: 'shopping',
+        shop: 'shopping',
+        shops: 'shopping',
+        outdoors: 'outdoor attractions',
+        outdoor: 'outdoor attractions',
+        history: 'historic sites',
+        historic: 'historic sites',
+      };
+
+      clean = clean.replace(/^best\s+/i, '').trim();
+
+      return aliases[clean] || clean;
+    }
+
+    function splitSearchTerms(value) {
+      return cleanSearchText(value)
+        .split(',')
+        .map((term) => cleanSearchText(term))
+        .filter(Boolean);
+    }
+
+    function buildNormalizedPlaceQuery(term, destination) {
+      const normalizedTerm = normalizeSearchTerm(term, destination);
+      const normalizedDestination = normalizeDestinationText(destination);
+
+      if (!normalizedTerm) return '';
+
+      if (!normalizedDestination) {
+        return normalizedTerm;
+      }
+
+      return `${normalizedTerm} in ${normalizedDestination}`;
+    }
+
+    function normalizeSearchTermsForPlanner(terms, destination) {
+      const seen = new Set();
+      const normalized = [];
+
+      (terms || []).forEach((term) => {
+        const cleaned = normalizeSearchTerm(term, destination);
+        if (!cleaned) return;
+
+        const key = cleaned.toLowerCase();
+        if (seen.has(key)) return;
+
+        seen.add(key);
+        normalized.push(cleaned);
+      });
+
+      return normalized;
+    }
+
     const ALL_INTEREST_IDS = [
       "food",
       "coffee",
@@ -2251,7 +2358,10 @@ async function runSearch() {
     addCustomSearchPill(typedSearch, false);
   }
 
-  let searchTerms = getSelectedCategoryValues();
+  let searchTerms = getSelectedCategoryValues(
+    getSelectedCategoryValues(),
+    destination
+  );
 
   if (!searchTerms.length) {
     const res = await fetch(API_BASE + '/places/recommended',{
@@ -2280,7 +2390,8 @@ async function runSearch() {
   const grouped = [];
 
   for (const term of searchTerms) {
-    const fullQuery = `${term} in ${destination}`;
+    const fullQuery = buildNormalizedPlaceQuery(term, destination);
+    if (!fullQuery) continue;
     const res = await fetch(API_BASE + '/places/search?q=' + encodeURIComponent(fullQuery));
 
     if (!res.ok) {
@@ -2626,6 +2737,168 @@ function setupDestinationAutocomplete() {
       bindCharLeftCounter(document.getElementById('destinationInput'), document.getElementById('destinationCounter'));
 
     }
+
+
+    function escapeRegex(value) {
+      return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
+
+    function cleanSearchText(value) {
+      return String(value || '')
+        .trim()
+        .replace(/[“”]/g, '"')
+        .replace(/[‘’]/g, "'")
+        .replace(/\s+/g, ' ')
+        .replace(/[!?]+$/g, '')
+        .slice(0, 120);
+    }
+
+    function normalizeDestinationText(value) {
+      return cleanSearchText(value)
+        .replace(/\s*,\s*/g, ', ')
+        .replace(/\s+/g, ' ');
+    }
+
+    function getDestinationAliases(destination) {
+      const dest = normalizeDestinationText(destination);
+      if (!dest) return [];
+
+      const aliases = new Set();
+      aliases.add(dest);
+
+      const parts = dest.split(',').map((p) => p.trim()).filter(Boolean);
+
+      if (parts[0]) {
+        aliases.add(parts[0]); // San Diego
+      }
+
+      if (parts.length >= 2) {
+        aliases.add(`${parts[0]} ${parts[1]}`); // San Diego CA
+      }
+
+      return Array.from(aliases).filter(Boolean);
+    }
+
+    function stripDestinationFromSearch(term, destination) {
+      let clean = cleanSearchText(term);
+
+      if (!clean) return '';
+
+      // Common location phrases and typo cleanup
+      clean = clean
+        .replace(/\bnear me\b/gi, '')
+        .replace(/\bnew me\b/gi, '') // typo safety for "near me"
+        .replace(/\baround me\b/gi, '')
+        .replace(/\bin my area\b/gi, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+      const aliases = getDestinationAliases(destination)
+        .sort((a, b) => b.length - a.length);
+
+      aliases.forEach((alias) => {
+        const escaped = escapeRegex(alias);
+
+        clean = clean
+          .replace(new RegExp(`\\b(in|near|around)\\s+${escaped}\\b`, 'gi'), '')
+          .replace(new RegExp(`\\b${escaped}\\b`, 'gi'), '')
+          .replace(/\s+/g, ' ')
+          .trim();
+      });
+
+      clean = clean
+        .replace(/\b(in|near|around)\s*$/gi, '')
+        .replace(/^\s*(in|near|around)\b/gi, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+      return clean;
+    }
+
+    function normalizeSearchTerm(term, destination) {
+      let clean = stripDestinationFromSearch(term, destination).toLowerCase();
+
+      clean = clean
+        .replace(/^best\s+/i, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+      const aliases = {
+        food: 'restaurants',
+        eats: 'restaurants',
+        eat: 'restaurants',
+        restaurant: 'restaurants',
+        restaurants: 'restaurants',
+
+        taco: 'tacos',
+        tacos: 'tacos',
+
+        coffee: 'coffee shops',
+        coffees: 'coffee shops',
+        cafe: 'coffee shops',
+        cafes: 'coffee shops',
+        café: 'coffee shops',
+        cafés: 'coffee shops',
+
+        museum: 'museums',
+        museums: 'museums',
+
+        park: 'parks',
+        parks: 'parks',
+
+        nightlife: 'bars nightlife',
+        bar: 'bars nightlife',
+        bars: 'bars nightlife',
+
+        shopping: 'shopping',
+        shop: 'shopping',
+        shops: 'shopping',
+
+        outdoors: 'outdoor attractions',
+        outdoor: 'outdoor attractions',
+
+        history: 'historic sites',
+        historic: 'historic sites',
+      };
+
+      return aliases[clean] || clean;
+    }
+
+    function splitSearchTerms(value) {
+      return cleanSearchText(value)
+        .split(',')
+        .map((term) => cleanSearchText(term))
+        .filter(Boolean);
+    }
+
+    function normalizeSearchTermsForPlanner(terms, destination) {
+      const seen = new Set();
+      const normalized = [];
+
+      (terms || []).forEach((term) => {
+        const clean = normalizeSearchTerm(term, destination);
+        if (!clean) return;
+
+        const key = clean.toLowerCase();
+        if (seen.has(key)) return;
+
+        seen.add(key);
+        normalized.push(clean);
+      });
+
+      return normalized;
+    }
+
+    function buildNormalizedPlaceQuery(term, destination) {
+      const cleanTerm = normalizeSearchTerm(term, destination);
+      const cleanDest = normalizeDestinationText(destination);
+
+      if (!cleanTerm) return '';
+      if (!cleanDest) return cleanTerm;
+
+      return `${cleanTerm} in ${cleanDest}`;
+    }
+
 const CATEGORY_SUGGESTIONS = [
   {
     main_text: 'Food',
@@ -2727,17 +3000,25 @@ function addCategoryPill(item, shouldSearch = true) {
 
 
 function addCustomSearchPill(text, shouldSearch = false) {
-  const clean = String(text || '').trim().slice(0,120);
-  if (!clean) return;
+  const destination = document.getElementById('destinationInput')?.value || tripState.destination || '';
+  const parts = splitSearchTerms(text);
 
-  const key = `custom:${clean.toLowerCase()}`;
+  if (!parts.length) return;
 
-  selectedCategories.set(key, {
-    main_text: clean,
-    secondary_text: 'Custom search',
-    value: clean,
-    custom: true
+  parts.forEach((part) => {
+    const clean = normalizeSearchTerm(part, destination);
+    if (!clean) return;
+
+    const key = `custom:${clean.toLowerCase()}`;
+
+    selectedCategories.set(key, {
+      main_text: clean,
+      secondary_text: 'Custom search',
+      value: clean,
+      custom: true
+    });
   });
+
   renderSelectedCategoryPills();
 
   const input = document.getElementById('q');
