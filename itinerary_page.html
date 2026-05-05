@@ -1592,7 +1592,7 @@
     
 
 
-    function openPersonalizationModal(){
+    async function openPersonalizationModal(){
       const modal = document.getElementById('personalizationModal');
       const destinationInput = document.getElementById('landing-search');
       const destinationWarning = document.getElementById('destinationWarning');
@@ -1609,6 +1609,19 @@
         }
         return;
       }
+      const value = destinationInput.value.trim().slice(0, 120);
+      const predictions = await fetchAutocomplete(value, { types: '(cities)' });
+      if (!predictions.length) {
+        if (destinationWarning){
+          destinationWarning.textContent = `"${value}" doesn't look like a real city. Try selecting one from the suggestions.`;
+          destinationWarning.style.display = 'block';
+        }
+        if (destinationInput){
+          destinationInput.focus();
+        }
+        return;
+      }
+
       if (destinationWarning) {
         destinationWarning.style.display = 'none';
       }

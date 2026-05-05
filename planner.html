@@ -564,7 +564,7 @@
 <body>
   <header>
 
-    <div class="brand">
+  <a href="/" class = "brand">
   <img src="/static/images/tragent-icon2.png?v=4" alt="trAgent" class="brandLogoImg" />
   <span class="brandText"><span class="brandTextLight">tr</span>Agent</span>
   <span class="brandPageLabel">Planner</span>
@@ -1418,6 +1418,14 @@
     if (!nextDestination) {
       uiNotify('Missing destination', 'Enter a destination first.');
       return;
+    }
+
+    const predictions = await fetchAutocomplete(nextDestination, {types: '(cities)'});
+    if(!predictions.length){
+      uiNotify(
+        'Invalid destination',
+        `"${nextDestination}" doesn't look like a real city. Try selecting one from the suggstions. `
+      );
     }
 
     tripState.destination = nextDestination;
