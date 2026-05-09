@@ -1268,6 +1268,19 @@ def get_recommended_interests(profile: Optional[TripProfile]) -> list[str]:
     if profile.place_style == 'tourist_spots':
         interests.append('museums')
         interests.append('history')
+
+    age_style = (profile.age_style or '').lower()
+    age_extra: list[str] = []
+    if age_style == 'kids':
+        age_extra = ['parks', 'museums']
+    elif age_style == 'young_adult':
+        age_extra = ['nightlife']
+    elif age_style == 'senior':
+        age_extra = ['history', 'parks']
+    # Prepend so an explicit age_style outranks group_type defaults and
+    # survives the cleaned[:5] cap below.
+    interests = age_extra + interests
+
     seen = set()
     cleaned = []
     for interest in interests:
@@ -1395,6 +1408,57 @@ def dedupe_places_by_id(places: list[dict]) -> list[dict]:
 
     return unique
 
+# Age-style scoring keywords. "adult" (the default) and any unknown value are
+# a no-op so existing behaviour is unchanged for users who don't set the field.
+AGE_STYLE_BONUS_KEYWORDS = {
+    "kids": [
+        "park", "zoo", "aquarium", "museum", "garden", "family",
+        "playground", "kid", "children", "play", "toddler", "arcade",
+    ],
+    "young_adult": [
+        "bar", "brewery", "rooftop", "club", "social", "nightlife",
+        "trendy", "lounge", "live music", "music venue",
+    ],
+    "senior": [
+        "garden", "scenic", "historic", "museum", "heritage", "view",
+        "botanical", "memorial", "monument",
+    ],
+}
+
+AGE_STYLE_PENALTY_KEYWORDS = {
+    "kids": [
+        "bar", "nightclub", "lounge", "brewery", "wine", "cocktail",
+    ],
+    "young_adult": [
+        "playground", "toddler", "play museum", "kids", "children",
+    ],
+    "senior": [
+        "nightclub", "club", "loud", "sports bar", "trampoline",
+        "bounce", "arcade", "playground",
+    ],
+}
+
+
+def age_style_modifier(text_blob: str, age_style: Optional[str]) -> float:
+    """
+    Score adjustment based on age_style. `text_blob` should already be a
+    lowercased name+address (and optionally types) string. Unknown styles
+    return 0 so this is safe to call unconditionally.
+    """
+    if not age_style:
+        return 0.0
+    style = age_style.lower()
+    if style not in AGE_STYLE_BONUS_KEYWORDS:
+        return 0.0
+
+    score = 0.0
+    if any(w in text_blob for w in AGE_STYLE_BONUS_KEYWORDS[style]):
+        score += 12
+    if any(w in text_blob for w in AGE_STYLE_PENALTY_KEYWORDS[style]):
+        score -= 15
+    return score
+
+
 def score_place_for_profile(place: dict, profile: Optional[TripProfile] = None, interest: Optional[str]=None) -> float:
     profile = profile or TripProfile()
 
@@ -1459,6 +1523,8 @@ def score_place_for_profile(place: dict, profile: Optional[TripProfile] = None, 
 
         if profile.food_focus and any(word in blob for word in ["restaurant", "food", "cafe", "coffee", "grill", "kitchen"]):
             score += 4
+
+    score += age_style_modifier(blob, profile.age_style)
 
     return score
 
@@ -1682,6 +1748,8 @@ def score_place(place: dict, interest: str, profile: Optional[TripProfile]) -> f
             "steakhouse", "fine dining", "resort", "upscale", "grill"
         ]):
             score += 10
+
+    score += age_style_modifier(text_blob, profile.age_style)
 
     return score
 
