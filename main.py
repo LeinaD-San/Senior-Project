@@ -1265,7 +1265,7 @@ def get_recommended_interests(profile: Optional[TripProfile]) -> list[str]:
         interests.append('history')
         interests.append('coffee')
 
-    if profile.place_style =='tourists_spots':
+    if profile.place_style == 'tourist_spots':
         interests.append('museums')
         interests.append('history')
     seen = set()

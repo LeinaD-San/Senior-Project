@@ -41,7 +41,7 @@ class Trip(Base):
     group_type = Column(String, nullable=False, default="solo")
     age_style = Column(String, nullable=False, default="adult")
     pace = Column(String, nullable=False, default="balanced")
-    budget = Column(String, nullable=False, default="meduim")
+    budget = Column(String, nullable=False, default="medium")
     place_style = Column(String, nullable=False, default="mix")
     food_focus = Column(Integer, nullable=False, default=1)
 
