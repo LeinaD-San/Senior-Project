@@ -546,6 +546,9 @@
     .suggestItem:hover{
       background:rgba(11,18,32,.04);
     }
+    .suggestItem.keyboard-active{
+      background:rgba(255,106,0,.12);
+    }
     .suggestMain{
       font-weight:800;
       font-size:14px;
@@ -1674,6 +1677,16 @@
       return unique;
     }
 
+    function setupPlannerEnterShortcuts() {
+      const destinationInput = document.getElementById('destinationInput');
+      if (destinationInput) {
+        destinationInput.addEventListener('keydown', (e) => {
+          if (e.key !== 'Enter') return;
+          e.preventDefault();
+          applyDestinationChange();
+        });
+      }
+    }
 
 
     async function authFetch(path, options = {}) {
@@ -1726,6 +1739,7 @@
       renderDays();
       renderItinerary();
       renderResults(lastResults);
+      setupPlannerEnterShortcuts();
     }
 
     async function loadTripById(tripId) {
@@ -3129,6 +3143,79 @@ function hideSuggestionList(container) {
   container.classList.add('hidden');
 }
 
+function clearSuggestionHighlight(list) {
+  if (!list) return;
+  list.querySelectorAll('.suggestItem').forEach((item) => {
+    item.classList.remove('keyboard-active');
+  });
+}
+
+function moveSuggestionHighlight(list, direction) {
+  if (!list || list.classList.contains('hidden')) return;
+
+  const items = Array.from(list.querySelectorAll('.suggestItem'));
+  if (!items.length) return;
+
+  let currentIndex = items.findIndex((item) =>
+    item.classList.contains('keyboard-active')
+  );
+
+  if (currentIndex === -1) {
+    currentIndex = direction > 0 ? -1 : items.length;
+  }
+
+  let nextIndex = currentIndex + direction;
+
+  if (nextIndex < 0) nextIndex = items.length - 1;
+  if (nextIndex >= items.length) nextIndex = 0;
+
+  clearSuggestionHighlight(list);
+
+  const nextItem = items[nextIndex];
+  nextItem.classList.add('keyboard-active');
+  nextItem.scrollIntoView({ block: 'nearest' });
+}
+
+function setupSuggestionKeyboard(input, list) {
+  if (!input || !list) return;
+
+  if (input.dataset.setupSuggestionKeyboardBound === 'true') return;
+  input.dataset.setupSuggestionKeyboardBound = 'true';
+
+  input.addEventListener('keydown', (e) => {
+    const items = Array.from(list.querySelectorAll('.suggestItem'));
+    const hasSuggestions = !list.classList.contains('hidden') && list.querySelectorAll('.suggestItem').length > 0;
+
+    if (!hasSuggestions) return;
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      moveSuggestionHighlight(list, 1);
+    }
+
+    if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      moveSuggestionHighlight(list, -1);
+    }
+
+    if (e.key === 'Enter') {
+      const active = list.querySelector('.suggestItem.keyboard-active');
+
+      if (active) {
+        e.preventDefault();
+        active.click();
+      }
+    }
+
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      hideSuggestionList(list);
+      clearSuggestionHighlight(list);
+    }
+  });
+}
+
+
 function cleanCityLabel(text) {
   return String(text || '').replace(/, USA$/, '');
 }
@@ -3137,6 +3224,7 @@ function setupDestinationAutocomplete() {
   const input = document.getElementById('destinationInput');
   const list = document.getElementById('destinationSuggestions');
   if (!input || !list) return;
+  setupSuggestionKeyboard(input, list);
 
   input.addEventListener('input', () => {
     clearTimeout(destinationSuggestTimer);
@@ -3449,6 +3537,7 @@ function addCategoryPill(item, shouldSearch = true) {
 
   const input = document.getElementById('q');
   const list = document.getElementById('categorySuggestions');
+  setupSuggestionKeyboard(input, list);
 
   if (input) input.value = '';
   hideSuggestionList(list);
@@ -3601,6 +3690,7 @@ function setupCategoryAutoComplete() {
   const input = document.getElementById('q');
   const list = document.getElementById('categorySuggestions');
   if (!input || !list) return;
+  setupSuggestionKeyboard(input, list);
 
   input.addEventListener('input', () => {
     const value = input.value.trim().slice(0, 120);

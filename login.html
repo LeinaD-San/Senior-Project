@@ -220,6 +220,22 @@
       
       window.location.href = nextUrl();
     }
+
+
+    function setupEnterToSubmitAuth() {
+      ['name', 'email', 'password'].forEach((id) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+
+        el.addEventListener('keydown', (e) => {
+          if (e.key !== 'Enter') return;
+          e.preventDefault();
+          submitAuth();
+        });
+      });
+    }
+
+    setupEnterToSubmitAuth();
   </script>
 </body>
 </html>
