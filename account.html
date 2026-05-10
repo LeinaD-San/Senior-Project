@@ -134,6 +134,9 @@
     .suggestItem{padding:10px 12px;cursor:pointer;border-bottom:1px solid rgba(11,18,32,.06);}
     .suggestItem:last-child{border-bottom:none}
     .suggestItem:hover{background:rgba(11,18,32,.04)}
+    .suggestItem.keyboard-active{
+      background:rgba(255,106,0,.12);
+    }
     .suggestMain{font-weight:900;font-size:14px}
     .suggestSub{color:var(--muted);font-size:12px;margin-top:2px}
     .hidden{display:none}
@@ -641,6 +644,7 @@
       const input = document.getElementById('newTplDesc');
       const list = document.getElementById('templateDescSuggestions');
       if (!input || !list) return;
+      setupSuggestionKeyboard(input, list);
 
       input.addEventListener('input', () => {
         const value = input.value.trim().slice(0, 400);
@@ -677,6 +681,51 @@
       input.addEventListener('blur', () => {
         setTimeout(() => hideSuggestionList(list), 150);
       });
+    }
+
+
+    function setupAccountEnterShortcuts() {
+      const templateDest = document.getElementById('templateDest');
+      if (templateDest) {
+        templateDest.addEventListener('keydown', (e) => {
+          if (e.key !== 'Enter') return;
+          e.preventDefault();
+
+          const firstStartButton = document.querySelector('.templateCard .primary');
+          if (firstStartButton) {
+            firstStartButton.click();
+          }
+        });
+      }
+
+      const newTplName = document.getElementById('newTplName');
+      if (newTplName) {
+        newTplName.addEventListener('keydown', (e) => {
+          if (e.key !== 'Enter') return;
+          e.preventDefault();
+
+          const desc = document.getElementById('newTplDesc');
+          if (desc) desc.focus();
+        });
+      }
+
+      const newTplDays = document.getElementById('newTplDays');
+      if (newTplDays) {
+        newTplDays.addEventListener('keydown', (e) => {
+          if (e.key !== 'Enter') return;
+          e.preventDefault();
+          saveNewTemplate();
+        });
+      }
+
+      const newTplInterests = document.getElementById('newTplInterests');
+      if (newTplInterests) {
+        newTplInterests.addEventListener('keydown', (e) => {
+          if (e.key !== 'Enter') return;
+          e.preventDefault();
+          saveNewTemplate();
+        });
+      }
     }
 
 
@@ -810,6 +859,81 @@
       container.classList.add('hidden');
     }
 
+
+    function clearSuggestionHighlight(list) {
+      if (!list) return;
+      list.querySelectorAll('.suggestItem').forEach((item) => {
+        item.classList.remove('keyboard-active');
+      });
+    }
+
+    function moveSuggestionHighlight(list, direction) {
+      if (!list || list.classList.contains('hidden')) return;
+
+      const items = Array.from(list.querySelectorAll('.suggestItem'));
+      if (!items.length) return;
+
+      let currentIndex = items.findIndex((item) =>
+        item.classList.contains('keyboard-active')
+      );
+
+      if (currentIndex === -1) {
+        currentIndex = direction > 0 ? -1 : items.length;
+      }
+
+      let nextIndex = currentIndex + direction;
+
+      if (nextIndex < 0) nextIndex = items.length - 1;
+      if (nextIndex >= items.length) nextIndex = 0;
+
+      clearSuggestionHighlight(list);
+
+      const nextItem = items[nextIndex];
+      nextItem.classList.add('keyboard-active');
+      nextItem.scrollIntoView({ block: 'nearest' });
+    }
+
+    function setupSuggestionKeyboard(input, list) {
+      if (!input || !list) return;
+
+
+      if (input.dataset.setupSuggestionKeyboard === 'true') return;
+      input.dataset.setupSuggestionKeyboard = 'true';
+
+      input.addEventListener('keydown', (e) => {
+        const items = Array.from(list.querySelectorAll('.suggestItem'));
+        const hasSuggestions =
+          !list.classList.contains('hidden') && list.querySelectorAll('.suggestItem').length > 0;
+
+        if (!hasSuggestions) return;
+
+        if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          moveSuggestionHighlight(list, 1);
+        }
+
+        if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          moveSuggestionHighlight(list, -1);
+        }
+
+        if (e.key === 'Enter') {
+          const active = list.querySelector('.suggestItem.keyboard-active');
+
+          if (active) {
+            e.preventDefault();
+            active.click();
+          }
+        }
+
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          hideSuggestionList(list);
+          clearSuggestionHighlight(list);
+        }
+      });
+    }
+
     function cleanCityLabel(text) {
       return String(text || '').replace(/, USA$/, '');
     }
@@ -818,6 +942,7 @@
       const input = document.getElementById('templateDest');
       const list = document.getElementById('templateSuggestions');
       if (!input || !list) return;
+      setupSuggestionKeyboard(input, list);
 
       input.addEventListener('input', () => {
         clearTimeout(templateSuggestTimer);
@@ -1277,6 +1402,7 @@
       updateContinueUi();
       setupTemplateAutocomplete();
       setupTemplateDescriptionSuggestions();
+      setupAccountEnterShortcuts();
       renderTemplates();
 
       if (!token) {
