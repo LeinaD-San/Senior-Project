@@ -2614,6 +2614,151 @@ async function runSearch() {
       }
     }
 
+    const placeDetailsCache = {};
+
+    function hhmmToMinutesClient(value) {
+      if (!value || !/^\d{2}:\d{2}$/.test(value)) return null;
+
+      const [hours, minutes] = value.split(':').map(Number);
+      if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null;
+
+      return hours * 60 + minutes;
+    }
+
+    function parsePlaceHourToMinutes(label) {
+      if (!label) return null;
+
+      let s = String(label).toUpperCase().trim();
+      s = s.replace(/\s+/g, '');
+      s = s.replaceAll('.', '');
+
+      const match = s.match(/^(\d{1,2})(?::(\d{2}))?(AM|PM)$/);
+      if (!match) return null;
+
+      let hour = Number(match[1]);
+      const minute = Number(match[2] || 0);
+      const meridiem = match[3];
+
+      if (hour === 12) hour = 0;
+      if (meridiem === 'PM') hour += 12;
+
+      return hour * 60 + minute;
+    }
+
+    function getTripWeekdayIndex(dayNumber) {
+      const start = new Date(getTodayIsoDate() + 'T00:00:00');
+      start.setDate(start.getDate() + (Number(dayNumber) - 1));
+      return start.getDay() === 0 ? 6 : start.getDay() - 1;
+    }
+
+    function isItemOpenDuringSelectedTime(details, dayNumber, arrivalTime, departureTime) {
+      if (!arrivalTime) return true;
+
+      const hours = details?.hours || [];
+      if (!hours.length) return true;
+
+      const weekdayIndex = getTripWeekdayIndex(dayNumber);
+      const line = hours[weekdayIndex];
+
+      if (!line) return true;
+      if (line.includes('Open 24 hours')) return true;
+      if (line.includes('Closed')) return false;
+
+      const arrivalMin = hhmmToMinutesClient(arrivalTime);
+      const departureMin = hhmmToMinutesClient(departureTime || arrivalTime);
+
+      if (arrivalMin === null || departureMin === null) return true;
+
+      const parts = line.split(':');
+      if (parts.length < 2) return true;
+
+      const rawRanges = parts.slice(1).join(':').trim();
+      const ranges = rawRanges.split(',').map((r) => r.trim()).filter(Boolean);
+
+      for (const range of ranges) {
+        const rangeParts = range.split(/\s*[–-]\s*/);
+        if (rangeParts.length !== 2) continue;
+
+        const openMin = parsePlaceHourToMinutes(rangeParts[0]);
+        let closeMin = parsePlaceHourToMinutes(rangeParts[1]);
+
+        if (openMin === null || closeMin === null) continue;
+
+        if (closeMin <= openMin) {
+          closeMin += 24 * 60;
+        }
+
+        let checkArrival = arrivalMin;
+        let checkDeparture = departureMin;
+
+        if (checkDeparture <= checkArrival) {
+          checkDeparture += 24 * 60;
+        }
+
+        if (checkArrival >= openMin && checkDeparture <= closeMin) {
+          return true;
+        }
+      }
+
+      return false;
+    }
+
+    async function getPlaceDetailsForTimeCheck(placeId) {
+      if (!placeId) return null;
+
+      if (placeDetailsCache[placeId]) {
+        return placeDetailsCache[placeId];
+      }
+
+      try {
+        const res = await fetch(`/places/details/${encodeURIComponent(placeId)}`);
+        if (!res.ok) return null;
+
+        const data = await res.json().catch(() => null);
+        placeDetailsCache[placeId] = data;
+        return data;
+      } catch {
+        return null;
+      }
+    }
+
+    async function findClosedTimeWarnings() {
+      const warnings = [];
+
+      for (const [dayStr, items] of Object.entries(tripState.itemsByDay)) {
+        const day = Number(dayStr);
+
+        for (const item of items || []) {
+          if (!item.arrival_time) continue;
+
+          const details = await getPlaceDetailsForTimeCheck(item.place_id);
+          if (!details || !Array.isArray(details.hours) || !details.hours.length) {
+            continue;
+          }
+
+          const isOpen = isItemOpenDuringSelectedTime(
+            details,
+            day,
+            item.arrival_time,
+            item.departure_time
+          );
+
+          if (!isOpen) {
+            const weekdayIndex = getTripWeekdayIndex(day);
+            warnings.push({
+              day,
+              name: item.name,
+              arrival_time: item.arrival_time,
+              departure_time: item.departure_time,
+              hours: details.hours[weekdayIndex] || 'Hours unavailable',
+            });
+          }
+        }
+      }
+
+      return warnings;
+    }
+
     const savePhotoCache = {};
 
     async function getFirstPhotoURLForSave(item) {
@@ -2649,6 +2794,52 @@ async function runSearch() {
     }
 
     async function saveTrip() {
+      const warnings = await findClosedTimeWarnings();
+
+      if (warnings.length) {
+        const warningList = warnings.map((w) => {
+          const timeText = w.departure_time
+            ? `${escapeHtml(w.arrival_time)}–${escapeHtml(w.departure_time)}`
+            : escapeHtml(w.arrival_time);
+
+          return `
+            <li style="margin-bottom:10px;">
+              <strong>Day ${w.day}: ${escapeHtml(w.name)}</strong><br>
+              Selected time: ${timeText}<br>
+              Store hours: ${escapeHtml(w.hours)}
+            </li>
+          `;
+        }).join('');
+
+        openUiModal({
+          title: 'Check stop times',
+          message: `
+            <div>
+              Some stops may be closed during the time you selected:
+              <ul style="margin-top:10px;padding-left:20px;">${warningList}</ul>
+              You can cancel and adjust the times, or save anyway.
+            </div>
+          `,
+          actions: [
+            { label: 'Cancel', onClick: () => closeUiModal() },
+            {
+              label: 'Save anyway',
+              variant: 'primary',
+              onClick: async () => {
+                closeUiModal();
+                await saveTripConfirmed();
+              },
+            },
+          ],
+        });
+
+        return;
+      }
+
+      await saveTripConfirmed();
+    }
+
+    async function saveTripConfirmed() {
       const token = getToken();
       if (!token) {
         const nextUrl = currentNextUrlWithAutosave();
