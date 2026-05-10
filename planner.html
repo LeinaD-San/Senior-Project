@@ -604,6 +604,14 @@
         <div class="panelFoot">
           <div style="display:flex; flex-direction:column; gap:10px;">
             <button
+                type="button"
+                onclick="optimizeCurrentDayRoute()"
+                style="width:100%; border:none; padding:12px 14px; border-radius:14px; background:rgba(11,18,32,.08); font-weight:900; cursor:pointer;"
+              >
+                Optimize Day Route
+              </button>
+
+            <button
               type="button"
               onclick="openCurrentDayInGoogleMaps()"
               style="width:100%; border:none; padding:12px 14px; border-radius:14px; background:rgba(11,18,32,.08); font-weight:900; cursor:pointer;"
@@ -887,6 +895,129 @@
       if (miles === null) return null;
       const mph = 45;
       return Math.round((miles / mph) * 60);
+    }
+
+    function hasUsableCoordinates(place) {
+      return Number.isFinite(Number(place?.lat)) && Number.isFinite(Number(place?.lng));
+    }
+
+    function estimateRouteTotalMinutes(items) {
+      let total = 0;
+
+      for (let i = 1; i < items.length; i++) {
+        const minutes = estimateTravelMin(items[i - 1], items[i]);
+        if (minutes !== null) {
+          total += minutes;
+        }
+      }
+
+      return total;
+    }
+
+    function orderStopsByNearestNeighbor(items) {
+      const stops = [...(items || [])];
+
+      if (stops.length <= 2) {
+        return stops;
+      }
+
+      const coordinateStops = stops.filter(hasUsableCoordinates);
+      const missingCoordinateStops = stops.filter((stop) => !hasUsableCoordinates(stop));
+
+      if (coordinateStops.length <= 2) {
+        return stops;
+      }
+
+    function buildRouteFromStart(startIndex){
+      const remaining = [...coordinateStops];
+      const route = [];
+
+      route.push(remaining.splice(startIndex, 1)[0]);
+
+      while (remaining.length) {
+        const current = route[route.length - 1];
+
+        let bestIndex = 0;
+        let bestDistance = Infinity;
+
+        remaining.forEach((candidate, index) => {
+          const distance = haversineMiles(current, candidate);
+
+          if (distance !== null && distance < bestDistance) {
+            bestDistance = distance;
+            bestIndex = index;
+          }
+        });
+
+        route.push(remaining.splice(bestIndex, 1)[0]);
+      }
+      return route;
+    }
+
+    let bestRoute = null;
+    let bestMinutes = Infinity;
+
+    for (let i = 0;i< coordinateStops.length; i++){
+      const route = buildRouteFromStart(i);
+      const minutes = estimateRouteTotalMinutes(route);
+
+      if (minutes < bestMinutes){
+        bestMinutes = minutes;
+        bestRoute = route;
+      }
+    }
+
+      return [...(bestRoute || coordinateStops), ...missingCoordinateStops];
+    }
+
+    async function optimizeCurrentDayRoute() {
+      console.log('Optimize clicked');
+      console.log('Active day:', tripState.activeDay);
+      console.log('Items:', tripState.itemsByDay[tripState.activeDay]);
+
+      const day = tripState.activeDay;
+      const items = tripState.itemsByDay[day] || [];
+
+      if (items.length < 3) {
+        uiNotify(
+          'Optimize route',
+          `Add at least three places to Day ${day} before optimizing the route.`
+        );
+        return;
+      }
+
+      const coordinateCount = items.filter(hasUsableCoordinates).length;
+
+      if (coordinateCount < 3) {
+        uiNotify(
+          'Optimize route',
+          `Day ${day} needs at least three places with map coordinates before route optimization can work.`
+        );
+        return;
+      }
+
+      const beforeMinutes = estimateRouteTotalMinutes(items);
+      const optimized = orderStopsByNearestNeighbor(items);
+      const afterMinutes = estimateRouteTotalMinutes(optimized);
+
+      optimized.forEach((item, index) => {
+        item.position = index + 1;
+      });
+
+      tripState.itemsByDay[day] = optimized;
+
+      renderItinerary();
+      renderResultsPage();
+      await persistReorder(day);
+
+      const savedMinutes = Math.max(0, beforeMinutes - afterMinutes);
+
+      uiNotify(
+        'Route optimized',
+        savedMinutes > 0
+          ? `Day ${day} was reordered to reduce estimated travel time by about ${savedMinutes} minutes.`
+          : `Day ${day} was checked, but the current order was already close to the best route.`);
+
     }
 
     function getCurrentDayStopsForMaps(day = tripState.activeDay) {
@@ -1933,7 +2064,7 @@
       });
 
       renderItinerary();
-      renderResults(lastResults);
+      renderResultsPage();
 
       if (prev) {
         const travelMin = estimateTravelMin(prev, place);
@@ -1991,7 +2122,7 @@
       tripState.itemsByDay[tripState.activeDay] = dayItems.filter(x => x.place_id !== placeId);
       tripState.itemsByDay[tripState.activeDay].forEach((it, idx) => { it.position = idx + 1; });
       renderItinerary();
-      renderResults(lastResults);
+      renderResults();
 
       if (persistEnabled() && item?.id) {
         await fetch(`/trips/${tripState.currentTripId}/items/${item.id}`, {
@@ -2057,7 +2188,7 @@
 
         dayItems[idx] = replacement;
         renderItinerary();
-        renderResults(lastResults);
+        renderResults();
 
         uiNotify("Replace stop", "Stop replaced.");
       });
@@ -2583,7 +2714,8 @@ async function runSearch() {
             if (!nextItemsByDay[day]) nextItemsByDay[day] = [];
 
             const places = dedupePlacesFrontend(dayInfo.stops || dayInfo.places || []);
-            nextItemsByDay[day] = places.map((place, idx) => ({
+
+            const mappedPlaces = places.map((place, idx) => ({
               place_id: place.place_id,
               name: place.name,
               address: place.address || '',
@@ -2596,6 +2728,14 @@ async function runSearch() {
               arrival_time: place.arrival_time || null,
               departure_time: place.departure_time || null,
             }));
+
+            const routeOrderedPlaces = orderStopsByNearestNeighbor(mappedPlaces);
+
+            routeOrderedPlaces.forEach((place, idx) => {
+              place.position = idx + 1;
+            });
+
+            nextItemsByDay[day] = routeOrderedPlaces;
           });
 
           tripState.destination = destination;
