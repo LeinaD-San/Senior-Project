@@ -2376,6 +2376,23 @@ async def ai_itinerary(body: ItineraryRequest):
         profile.group_type,
         ["coffee", "museums", "parks", "shopping", "food"]
     )
+
+    if profile.food_focus and "food" not in interests:
+        interests = ["food"] + interests
+
+    if profile.place_style == "hidden_gems" and "coffee" not in interests:
+        interests.append("coffee")
+
+    if profile.place_style == "tourist_spots" and "museums" not in interests:
+        interests.append("museums")
+
+
+    seen_interests = set()
+    interests = [
+        interest
+        for interest in interests
+        if not (interest in seen_interests or seen_interests.add(interest))
+    ]
     
     print("AI itinerary start:", body.destination, "days=", body.days, "interests=", interests)
 
@@ -2420,6 +2437,16 @@ async def ai_itinerary(body: ItineraryRequest):
         max_stops_per_day = 3
     elif profile.pace == "packed":
         max_stops_per_day = 5
+
+    if profile.group_type == "family" and profile.pace != "packed":
+        max_stops_per_day = min(max_stops_per_day, 3)
+
+    if profile.group_type == "solo" and profile.pace == "relaxed":
+        max_stops_per_day = min(max_stops_per_day, 3)
+
+    if profile.group_type == "friends" and profile.pace == "packed":
+        max_stops_per_day = max(max_stops_per_day, 5)
+
 
     itinerary = build_balanced_itinerary(
         grouped_places=grouped_places,
