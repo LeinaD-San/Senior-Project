@@ -36,6 +36,7 @@ from typing import Optional
 
 from fastapi.staticfiles import StaticFiles
 
+import math
 
 BASE_DIR = Path(__file__).resolve().parent
 
@@ -941,6 +942,40 @@ def estimate_price_score(place: dict) -> int:
     return 5
 
 
+def distance_meters_between(
+    lat1: Optional[float],
+    lng1: Optional[float],
+    lat2: Optional[float],
+    lng2: Optional[float],
+) -> Optional[float]:
+    if lat1 is None or lng1 is None or lat2 is None or lng2 is None:
+        return None
+
+    try:
+        lat1 = float(lat1)
+        lng1 = float(lng1)
+        lat2 = float(lat2)
+        lng2 = float(lng2)
+    except (TypeError, ValueError):
+        return None
+
+    radius_earth_meters = 6371000
+
+    phi1 = math.radians(lat1)
+    phi2 = math.radians(lat2)
+    delta_phi = math.radians(lat2 - lat1)
+    delta_lambda = math.radians(lng2 - lng1)
+
+    a = (
+        math.sin(delta_phi / 2) ** 2
+        + math.cos(phi1) * math.cos(phi2) * math.sin(delta_lambda / 2) ** 2
+    )
+
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+
+    return radius_earth_meters * c
+
+
 @app.get("/places/search")
 async def places_search(
     q: str = Query(min_length=1, max_length=120),
@@ -975,7 +1010,6 @@ async def places_search(
     for p in data.get("results", []):
         location = p.get("geometry", {}).get("location", {})
 
-        # Build a thumbnail URL if Google returned a photo_reference
         raw_photos = p.get("photos", [])
         photo_urls = []
         for ph in raw_photos[:5]:
@@ -986,6 +1020,16 @@ async def places_search(
                 f"?maxwidth=400&photo_reference={ref}&key={api_key}"
             )
 
+        place_lat = location.get('lat')
+        place_lng = location.get('lng')
+
+        distance_meters = None
+        if lat is not None and lng is not None:
+            distance_meters = distance_meters_between(lat, lng, place_lat, place_lng)
+
+            if distance_meters is not None and distance_meters > radius:
+                continue
+
         results.append({
             "place_id": p.get("place_id"),
             "name": p.get("name"),
@@ -993,8 +1037,10 @@ async def places_search(
             "rating": p.get("rating"),
             "price_level": p.get('price_level'),
             "price_estimate": estimate_price_score(p),
-            "lat": location.get("lat"),
-            "lng": location.get("lng"),
+            "lat": place_lat,
+            "lng": place_lng,
+            "distance_meters": round(distance_meters) if distance_meters is not None else None,
+            "distance_miles": round(distance_meters / 1609.344, 2) if distance_meters is not None else None,
             "photo_url": photo_urls[0] if raw_photos else None,
             "photos": photo_urls,
         })
@@ -1217,6 +1263,40 @@ async def geo_reverse(lat: float, lng: float):
 
     first = (data.get("results") or [{}])[0]
     return {"formatted_address": first.get("formatted_address")}
+
+
+@app.get("/geo/forward")
+async def geo_forward(address: str = Query(min_length=1, max_length=200)):
+    api_key = os.getenv("GOOGLE_MAPS_API_KEY")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="GOOGLE_MAPS_API_KEY is not set")
+
+    url = "https://maps.googleapis.com/maps/api/geocode/json"
+    params = {
+        "address": address,
+        "key": api_key,
+    }
+
+    async with httpx.AsyncClient(timeout=15) as client:
+        r = await client.get(url, params=params)
+        r.raise_for_status()
+        data = r.json()
+
+    status = data.get("status")
+    if status not in ("OK", "ZERO_RESULTS"):
+        raise HTTPException(
+            status_code=502,
+            detail={"google_status": status, "error": data.get("error_message")},
+        )
+
+    first = (data.get("results") or [{}])[0]
+    location = first.get("geometry", {}).get("location", {})
+
+    return {
+        "formatted_address": first.get("formatted_address"),
+        "lat": location.get("lat"),
+        "lng": location.get("lng"),
+    }
 
 #this is a helper that maps interests to search terms
 INTEREST_QUERY_MAP = {

@@ -2556,7 +2556,9 @@
 
       const grouped = [];
       for (const q of queries) {
-        const res = await fetch(API_BASE + "/places/search?q=" + encodeURIComponent(q));
+        const url = await buildCityBoundedPlaceSearchUrl(q, destination);
+        const res = await fetch(url);
+
         if (!res.ok) {
           grouped.push([]);
           continue;
@@ -2590,7 +2592,8 @@ async function runSearch() {
     const specificQuery = buildSpecificPlaceQuery(typedSearch, destination);
 
     if (specificQuery) {
-      const specificRes = await fetch(API_BASE + '/places/search?q=' + encodeURIComponent(specificQuery));
+      const specificUrl = await buildCityBoundedPlaceSearchUrl(specificQuery, destination);
+      const specificRes = await fetch(specificUrl);
 
       if (specificRes.ok) {
         const specificData = await specificRes.json().catch(() => ({}));
@@ -2630,7 +2633,6 @@ async function runSearch() {
     return;
   }
 
-  // 3. Normal category/custom search.
   for (const term of searchTerms) {
     const queries = [];
 
@@ -2646,7 +2648,8 @@ async function runSearch() {
     for (const fullQuery of queries) {
       if (!fullQuery) continue;
 
-      const res = await fetch(API_BASE + '/places/search?q=' + encodeURIComponent(fullQuery));
+      const url = await buildCityBoundedPlaceSearchUrl(fullQuery, destination);
+      const res = await fetch(url);
 
       if (!res.ok) {
         grouped.push([]);
@@ -3527,6 +3530,57 @@ function restoreSavedInterestPills(savedInterests){
 
   renderSelectedCategoryPills();
   
+}
+
+const destinationGeoCache = {};
+
+async function getDestinationCoordinates(destination) {
+  const clean = String(destination || '').trim();
+
+  if (!clean) return null;
+
+  if (destinationGeoCache[clean]) {
+    return destinationGeoCache[clean];
+  }
+
+  try {
+    const res = await fetch(`/geo/forward?address=${encodeURIComponent(clean)}`);
+    if (!res.ok) return null;
+
+    const data = await res.json().catch(() => null);
+
+    if (!data || data.lat === null || data.lng === null) {
+      return null;
+    }
+
+    destinationGeoCache[clean] = {
+      lat: data.lat,
+      lng: data.lng,
+      formatted_address: data.formatted_address || clean,
+    };
+
+    return destinationGeoCache[clean];
+  } catch {
+    return null;
+  }
+}
+
+async function buildCityBoundedPlaceSearchUrl(query, destination) {
+  const params = new URLSearchParams();
+  params.set('q', query);
+
+  const geo = await getDestinationCoordinates(destination);
+
+  if (geo && Number.isFinite(Number(geo.lat)) && Number.isFinite(Number(geo.lng))) {
+    params.set('lat', String(geo.lat));
+    params.set('lng', String(geo.lng));
+
+    // 5 miles = about 8047 meters
+    //10 miles = about 16093 meters
+    params.set('radius', '16093');
+  }
+
+  return `${API_BASE}/places/search?${params.toString()}`;
 }
 
 function filterCategorySuggestions(value) {
