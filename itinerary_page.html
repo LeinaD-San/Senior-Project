@@ -529,6 +529,9 @@
     .suggestItem:hover{
       background:rgba(11,18,32,.04);
     }
+    .suggestItem.keyboard-active{
+      background:rgba(255,106,0,.12);
+    }
     .suggestMain{
       font-weight:800;
       font-size:14px;
@@ -1434,6 +1437,7 @@
       const input = document.getElementById('landing-search');
       const list = document.getElementById('landingSuggestions');
       if (!input || !list) return;
+      setupSuggestionKeyboard(input, list);
 
       input.addEventListener('input', () => {
         clearTimeout(landingSuggestTimer);
@@ -1471,6 +1475,7 @@
       const input = document.getElementById('dest');
       const list = document.getElementById('planSuggestions');
       if (!input || !list) return;
+      setupSuggestionKeyboard(input, list);
 
       input.addEventListener('input', () => {
         clearTimeout(planSuggestTimer);
@@ -1583,6 +1588,84 @@
     function hideSuggestionList(container) {
       if (!container) return;
       container.classList.add('hidden');
+    }
+
+
+    function clearSuggestionHighlight(list) {
+      if (!list) return;
+      list.querySelectorAll('.suggestItem').forEach((item) => {
+        item.classList.remove('keyboard-active');
+      });
+    }
+
+    function moveSuggestionHighlight(list, direction) {
+      if (!list || list.classList.contains('hidden')) return;
+
+      const items = Array.from(list.querySelectorAll('.suggestItem'));
+      if (!items.length) return;
+
+      let currentIndex = items.findIndex((item) =>
+        item.classList.contains('keyboard-active')
+      );
+
+      if (currentIndex === -1) {
+        currentIndex = direction > 0 ? -1 : items.length;
+      }
+
+      let nextIndex = currentIndex + direction;
+
+      if (nextIndex < 0) nextIndex = items.length - 1;
+      if (nextIndex >= items.length) nextIndex = 0;
+
+      clearSuggestionHighlight(list);
+
+      const nextItem = items[nextIndex];
+      nextItem.classList.add('keyboard-active');
+      nextItem.scrollIntoView({ block: 'nearest' });
+    }
+
+    function setupSuggestionKeyboard(input, list) {
+      if (!input || !list) return;
+
+      if (input.dataset.setupSuggestionKeyboard === 'true') return;
+      input.dataset.setupSuggestionKeyboard = 'true';
+
+      input.addEventListener('keydown', (e) => {
+        const hasSuggestions =
+          !list.classList.contains('hidden') &&
+          list.querySelectorAll('.suggestItem').length > 0;
+
+        if (!hasSuggestions) return;
+
+        if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          moveSuggestionHighlight(list, 1);
+          return;
+        }
+
+        if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          moveSuggestionHighlight(list, -1);
+          return;
+        }
+
+        if (e.key === 'Enter') {
+          const active = list.querySelector('.suggestItem.keyboard-active');
+
+          if (active) {
+            e.preventDefault();
+            active.click();
+          }
+
+          return;
+        }
+
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          hideSuggestionList(list);
+          clearSuggestionHighlight(list);
+        }
+      });
     }
 
     function cleanCityLabel(text) {

@@ -561,6 +561,84 @@
     .hidden{
       display:none;
     }
+
+    .routeOptions{
+      margin-top:14px;
+      padding-top:14px;
+      border-top:1px solid rgba(11,18,32,.10);
+    }
+
+    .routeOptionsTitle{
+      font-weight:900;
+      font-size:14px;
+    }
+
+    .routeOptionsHint{
+      margin-top:3px;
+      color:var(--muted);
+      font-size:12px;
+      line-height:1.35;
+    }
+
+    .startLocationRow{
+      display:flex;
+      gap:10px;
+      margin-top:10px;
+      align-items:center;
+    }
+
+    .startLocationRow input{
+      flex:1;
+      min-width:0;
+      padding:11px 12px;
+      border-radius:14px;
+      border:1px solid var(--border);
+      font-size:14px;
+      outline:none;
+      background:white;
+    }
+
+    .startLocationRow button{
+      border:none;
+      padding:11px 13px;
+      border-radius:14px;
+      font-weight:900;
+      cursor:pointer;
+      background:rgba(11,18,32,.08);
+      color:var(--ink);
+      white-space:nowrap;
+    }
+
+    .startLocationRow button:hover{
+      background:rgba(11,18,32,.11);
+    }
+
+
+    .startSuggestWrap{
+      position:relative;
+      flex:1;
+      min-width:0;
+    }
+
+    .startSuggestWrap input{
+      width:100%;
+    }
+
+    .startRemoveBtn{
+      background:rgba(185,28,28,.08) !important;
+      color:#b91c1c !important;
+    }
+
+    .startRemoveBtn:hover{
+      background:rgba(185,28,28,.12) !important;
+    }
+
+    .startLocationStatus{
+      margin-top:6px;
+      font-size:12px;
+      color:rgba(11,18,32,.55);
+      line-height:1.35;
+    }
   </style>
 </head>
 
@@ -571,7 +649,7 @@
   <img src="/static/images/tragent-icon2.png?v=4" alt="trAgent" class="brandLogoImg" />
   <span class="brandText"><span class="brandTextLight">tr</span>Agent</span>
   <span class="brandPageLabel">Planner</span>
-</div>
+  </a>
 
     <div class="topActions">
       <a href="/">Back to home</a>
@@ -664,39 +742,39 @@
     style="margin-top:0;font-size:10px;line-height:1.1;color:rgba(11,18,32,.55);"
     aria-live="polite"
   ></div>
+
+    <div class="routeOptions">
+      <div class="routeOptionsTitle">Route start</div>
+      <div class="routeOptionsHint">
+        Optional starting point for directions and optimization.
+      </div>
+
+      <div class="startLocationRow">
+        <div class="startSuggestWrap">
+          <input
+            id="startLocationInput"
+            type="text"
+            placeholder="Hotel, airport, home, or address"
+            maxlength="160"
+            autocomplete="off"
+          />
+          <div id="startLocationSuggestions" class="suggestList hidden"></div>
+        </div>
+
+        <button type="button" onclick="applyStartLocationChange()">Set</button>
+        <button type="button" class="startRemoveBtn" onclick="clearStartLocation()">Remove</button>
+      </div>
+
+      <div
+        id="startLocationStatus"
+        class="startLocationStatus"
+        aria-live="polite"
+      ></div>
+    </div>
+
+
 </div>
 
-
-        <!--Fixed destination card 
-        <div class="searchCard">
-  <div style="font-weight:900; font-size:15px;">Current Destination</div>
-  <div class="hint" style="margin-top:4px;">Edit your destination here. Searches will use this location.</div>
-
-  <div class="searchRow" style="margin-top:10px;">
-    <input
-      id="destinationInput"
-      type="text"
-      placeholder="Enter city, state"
-      maxlength="120"
-    />
-    <button type="button" onclick="applyDestinationChange()">Update</button>
-  </div>
-
-  <div
-    id="destinationCounter"
-    style="margin-top:0;font-size:10px;line-height:1.1;color:rgba(11,18,32,.55);"
-    aria-live="polite"
-  ></div>
-</div>
-
-        <div class="searchCard">
-
-          - Updating autogenerate button
-          <div class="searchRow">
-            <input id="q" placeholder="Search places (e.g., 'parks in San Antonio' or 'museums Brownsville')" />
-            <button onclick="runSearch()">Search</button>
-          </div>
-        -->
         <div class="searchCard">
           <div class="searchRow plannerSearchRow">
             <div id="qWrapper" class="suggestWrap placeSearchWrap">
@@ -917,7 +995,7 @@
       return total;
     }
 
-    function orderStopsByNearestNeighbor(items) {
+    function orderStopsByNearestNeighbor(items, startPoint = null) {
       const stops = [...(items || [])];
 
       if (stops.length <= 2) {
@@ -957,19 +1035,49 @@
       return route;
     }
 
+
+    function buildRouteFromExternalStart(start) {
+      const remaining = [...coordinateStops];
+      const route = [];
+      let current = start;
+
+      while (remaining.length) {
+        let bestIndex = 0;
+        let bestDistance = Infinity;
+
+        remaining.forEach((candidate, index) => {
+          const distance = haversineMiles(current, candidate);
+
+          if (distance !== null && distance < bestDistance) {
+            bestDistance = distance;
+            bestIndex = index;
+          }
+        });
+
+        const next = remaining.splice(bestIndex, 1)[0];
+        route.push(next);
+        current = next;
+      }
+
+      return route;
+    }
+
     let bestRoute = null;
     let bestMinutes = Infinity;
 
-    for (let i = 0;i< coordinateStops.length; i++){
-      const route = buildRouteFromStart(i);
-      const minutes = estimateRouteTotalMinutes(route);
+    if (startPoint && hasUsableCoordinates(startPoint)){
+      bestRoute = buildRouteFromExternalStart(startPoint);
+    } else {
+       for (let i = 0;i< coordinateStops.length; i++){
+        const route = buildRouteFromStart(i);
+        const minutes = estimateRouteTotalMinutes(route);
 
-      if (minutes < bestMinutes){
-        bestMinutes = minutes;
-        bestRoute = route;
+        if (minutes < bestMinutes){
+          bestMinutes = minutes;
+          bestRoute = route;
+        }
       }
     }
-
       return [...(bestRoute || coordinateStops), ...missingCoordinateStops];
     }
 
@@ -1000,7 +1108,7 @@
       }
 
       const beforeMinutes = estimateRouteTotalMinutes(items);
-      const optimized = orderStopsByNearestNeighbor(items);
+      const optimized = orderStopsByNearestNeighbor(items, getStartLocationPoint());
       const afterMinutes = estimateRouteTotalMinutes(optimized);
 
       optimized.forEach((item, index) => {
@@ -1055,17 +1163,25 @@
     }
 
     function buildGoogleMapsDayRouteUrl(day = tripState.activeDay) {
-      const stops = getCurrentDayStopsForMaps(day)
+      const stopLabels = getCurrentDayStopsForMaps(day)
         .map((place) => mapsPlaceLabel(place))
         .filter(Boolean);
 
-      if (stops.length < 2) {
+      const startLabel = getStartLocationLabel();
+
+      if (startLabel && stopLabels.length < 1){
+        return '';
+      }
+      if (!startLabel && stopLabels.length< 2){
         return '';
       }
 
-      const origin = stops[0];
-      const destination = stops[stops.length - 1];
-      const waypoints = stops.slice(1, -1);
+      const origin = startLabel || stopLabels[0];
+      const destination = stopLabels[stopLabels.length - 1];
+
+      const waypoints = startLabel
+        ? stopLabels.slice(0,-1)
+        : stopLabels.slice(1, -1);
 
       const params = new URLSearchParams();
       params.set('api', '1');
@@ -1080,16 +1196,130 @@
       return `https://www.google.com/maps/dir/?${params.toString()}`;
     }
 
+
+    function getStartLocationLabel() {
+      return String(tripState.startLocation || '').trim();
+    }
+
+    function hasStartCoordinates() {
+      return Number.isFinite(Number(tripState.startLat)) &&
+            Number.isFinite(Number(tripState.startLng));
+    }
+
+    function getStartLocationPoint() {
+      const label = getStartLocationLabel();
+
+      if (!label) return null;
+
+      return {
+        name: label,
+        address: label,
+        lat: tripState.startLat,
+        lng: tripState.startLng,
+        position: 0,
+        is_start_location: true,
+      };
+    }
+
+    async function geocodeStartLocation(value) {
+      const clean = String(value || '').trim().slice(0, 160);
+      if (!clean) return null;
+
+      try {
+        const res = await fetch(`/geo/forward?address=${encodeURIComponent(clean)}`);
+        if (!res.ok) return null;
+
+        const data = await res.json().catch(() => null);
+
+        if (!data || data.lat === null || data.lng === null) {
+          return {
+            label: clean,
+            lat: null,
+            lng: null,
+            formatted_address: clean,
+          };
+        }
+
+        return {
+          label: data.formatted_address || clean,
+          lat: data.lat,
+          lng: data.lng,
+          formatted_address: data.formatted_address || clean,
+        };
+      } catch {
+        return {
+          label: clean,
+          lat: null,
+          lng: null,
+          formatted_address: clean,
+        };
+      }
+    }
+
+    async function applyStartLocationChange() {
+      const input = document.getElementById('startLocationInput');
+      const status = document.getElementById('startLocationStatus');
+
+      const value = (input?.value || '').trim().slice(0, 160);
+
+      if (!value) {
+        tripState.startLocation = '';
+        tripState.startLat = null;
+        tripState.startLng = null;
+
+        if (input) input.value = '';
+        if (status) status.textContent = 'No starting location set. Route starts from your first stop.';
+        return;
+      }
+
+      if (status) status.textContent = 'Checking starting location…';
+
+      const geo = await geocodeStartLocation(value);
+
+      tripState.startLocation = geo?.formatted_address || value;
+      tripState.startLat = Number.isFinite(Number(geo?.lat)) ? Number(geo.lat) : null;
+      tripState.startLng = Number.isFinite(Number(geo?.lng)) ? Number(geo.lng) : null;
+
+      if (input) input.value = tripState.startLocation;
+
+      if (status) {
+        status.textContent = hasStartCoordinates()
+          ? 'Starting location set and ready for route optimization.'
+          : 'Starting location set. Google Maps will use it, but optimization may ignore it if coordinates are unavailable.';
+      }
+    }
+
+
+    function clearStartLocation() {
+      const input = document.getElementById('startLocationInput');
+      const status = document.getElementById('startLocationStatus');
+
+      tripState.startLocation = '';
+      tripState.startLat = null;
+      tripState.startLng = null;
+
+      if (input) input.value = '';
+
+      if (status) {
+        status.textContent = 'Starting location removed. Route starts from your first stop.';
+      }
+    }
+
     function openCurrentDayInGoogleMaps() {
       const day = tripState.activeDay;
       const stops = getCurrentDayStopsForMaps(day);
 
-      if (stops.length < 2) {
+      const hasStart = !!getStartLocationLabel();
+      const minimumStops = hasStart ? 1 : 2;
+
+      if (stops.length < minimumStops){
         uiNotify(
           'Google Maps route',
-          `Add at least two places to Day ${day} before opening directions.`
+          hasStart
+            ? `Add at least one place to Day ${day} before opening directions from your starting location.`
+            : `Add at least two places to Day ${day} before opening directions.`
         );
-        return;
+        return
       }
 
       const url = buildGoogleMapsDayRouteUrl(day);
@@ -1686,6 +1916,14 @@
           applyDestinationChange();
         });
       }
+      const startInput = document.getElementById('startLocationInput');
+      if (startInput) {
+        startInput.addEventListener('keydown', (e) => {
+          if (e.key !== 'Enter') return;
+          e.preventDefault();
+          applyStartLocationChange();
+        });
+      }
     }
 
 
@@ -1719,6 +1957,9 @@
     // trip state
     const tripState = {
       destination: '',
+      startLocation: '',
+      startLat: null,
+      startLng: null,
       days: 3,
       activeDay: 1,
       itemsByDay: { 1: [], 2: [], 3: [] },
@@ -1740,6 +1981,7 @@
       renderItinerary();
       renderResults(lastResults);
       setupPlannerEnterShortcuts();
+      setupStartLocationAutocomplete();
     }
 
     async function loadTripById(tripId) {
@@ -2646,7 +2888,13 @@
             return;
           }
 
-          renderResults(dedupePlacesFrontend(data.results || []));
+          const boundedResults = await filterPlacesNearDestination(
+            dedupePlacesFrontend(data.results || []),
+            destination,
+            12
+          );
+
+          renderResults(boundedResults);
           return;
         }
 
@@ -2678,7 +2926,15 @@
           }
         }
 
-        renderResults(dedupePlacesFrontend(interleaveResults(grouped)));
+        const mixedResults = dedupePlacesFrontend(interleaveResults(grouped));
+
+        const boundedResults = await filterPlacesNearDestination(
+          mixedResults,
+          destination,
+          12
+        );
+        renderResults(boundedResults);
+
       });
   };
 
@@ -3661,6 +3917,30 @@ async function getDestinationCoordinates(destination) {
   }
 }
 
+async function filterPlacesNearDestination(places, destination, maxMiles = 12) {
+  const geo = await getDestinationCoordinates(destination);
+
+  if (!geo || !Number.isFinite(Number(geo.lat)) || !Number.isFinite(Number(geo.lng))) {
+    return places || [];
+  }
+
+  const destinationPoint = {
+    lat: Number(geo.lat),
+    lng: Number(geo.lng),
+  };
+
+  return (places || []).filter((place) => {
+    // If the result has no coordinates, keep it because we cannot fairly judge distance.
+    if (!hasUsableCoordinates(place)) return true;
+
+    const miles = haversineMiles(destinationPoint, place);
+
+    if (miles === null) return true;
+
+    return miles <= maxMiles;
+  });
+}
+
 async function buildCityBoundedPlaceSearchUrl(query, destination) {
   const params = new URLSearchParams();
   params.set('q', query);
@@ -3696,7 +3976,9 @@ function filterCategorySuggestions(value) {
 function setupCategoryAutoComplete() {
   const input = document.getElementById('q');
   const list = document.getElementById('categorySuggestions');
+
   if (!input || !list) return;
+
   setupSuggestionKeyboard(input, list);
 
   input.addEventListener('input', () => {
@@ -3704,6 +3986,7 @@ function setupCategoryAutoComplete() {
 
     if (value.length < 2) {
       hideSuggestionList(list);
+      clearSuggestionHighlight(list);
       return;
     }
 
@@ -3711,6 +3994,7 @@ function setupCategoryAutoComplete() {
 
     if (!matches.length) {
       hideSuggestionList(list);
+      clearSuggestionHighlight(list);
       return;
     }
 
@@ -3726,11 +4010,15 @@ function setupCategoryAutoComplete() {
       input.dispatchEvent(new Event('input'));
     } else {
       hideSuggestionList(list);
+      clearSuggestionHighlight(list);
     }
   });
 
   input.addEventListener('keydown', (e) => {
     if (e.key !== 'Enter') return;
+
+    const active = list.querySelector('.suggestItem.keyboard-active');
+    if (active) return;
 
     e.preventDefault();
 
@@ -3741,11 +4029,313 @@ function setupCategoryAutoComplete() {
   });
 
   input.addEventListener('blur', () => {
-    setTimeout(() => hideSuggestionList(list), 150);
+    setTimeout(() => {
+      hideSuggestionList(list);
+      clearSuggestionHighlight(list);
+    }, 150);
   });
 }
 
-    //  init from URL params 
+function isGenericStartLocationResult(place, typedValue, destination) {
+  const typed = normalizeDuplicateText(typedValue);
+  const dest = normalizeDuplicateText(destination);
+  const name = normalizeDuplicateText(place?.name);
+  const address = normalizeDuplicateText(place?.address);
+
+  const hasStreetNumber = /\d/.test(String(place?.address || ''));
+  const hasRating = Number.isFinite(Number(place?.rating));
+
+  const genericWords = [
+    'city',
+    'town',
+    'village',
+    'county',
+    'island',
+    'beach',
+    'texas',
+    'tx',
+    'united states'
+  ];
+
+  const nameLooksGeneric =
+    genericWords.some((word) => name === word || name.endsWith(` ${word}`)) ||
+    name === dest ||
+    address === dest;
+
+  const typedIsNotSpecific = typed.length < 5;
+
+  if (!hasStreetNumber && !hasRating && nameLooksGeneric) return true;
+
+  if (!hasStreetNumber && !hasRating && typedIsNotSpecific && name.includes('island')) {
+    return true;
+  }
+
+  return false;
+}
+
+function scoreStartLocationSuggestion(place, typedValue, destination) {
+  const typed = String(typedValue || '').trim().toLowerCase();
+  const dest = String(destination || '').trim().toLowerCase();
+
+  const name = String(place?.name || '').trim().toLowerCase();
+  const address = String(place?.address || '').trim().toLowerCase();
+
+  const hasStreetNumber = /\d/.test(address);
+  const hasRating = Number.isFinite(Number(place?.rating));
+  const hasCoords =
+    Number.isFinite(Number(place?.lat)) &&
+    Number.isFinite(Number(place?.lng));
+
+  let score = 0;
+
+  if (name.startsWith(typed)) score += 80;
+  else if (name.includes(typed)) score += 50;
+
+  if (address.includes(typed)) score += 30;
+
+  if (hasStreetNumber) score += 60;
+  if (hasRating) score += 35;
+  if (hasCoords) score += 10;
+
+  const destinationCity = dest.split(',')[0]?.trim();
+  if (destinationCity && address.includes(destinationCity)) score += 25;
+
+  if (isGenericStartLocationResult(place, typedValue, destination)) {
+    score -= 200;
+  }
+
+  return score;
+}
+
+function rankStartLocationSuggestions(places, typedValue, destination) {
+  const filtered = (places || []).filter((place) => {
+    return !isGenericStartLocationResult(place, typedValue, destination);
+  });
+
+  const source = filtered.length ? filtered : (places || []);
+
+  return [...source]
+    .map((place) => ({
+      place,
+      score: scoreStartLocationSuggestion(place, typedValue, destination),
+    }))
+    .sort((a, b) => b.score - a.score)
+    .map((entry) => entry.place);
+}
+
+function isGenericStartPrediction(item, typedValue, destination) {
+  const typed = normalizeDuplicateText(typedValue);
+  const dest = normalizeDuplicateText(destination);
+  const main = normalizeDuplicateText(item?.main_text || '');
+  const description = normalizeDuplicateText(item?.description || '');
+
+  if (!main && !description) return true;
+
+  if (main === dest || description === dest) return true;
+
+  if (
+    main === 'south padre island' ||
+    main === 'padre island' ||
+    main.endsWith(' island')
+  ) {
+    return true;
+  }
+
+  if (typed.length < 5 && main.includes('island')) {
+    return true;
+  }
+
+  return false;
+}
+
+async function setStartLocationFromLabel(label) {
+  const input = document.getElementById('startLocationInput');
+  const status = document.getElementById('startLocationStatus');
+
+  const clean = String(label || '').trim().slice(0, 160);
+  if (!clean) return;
+
+  if (status) status.textContent = 'Checking starting location…';
+
+  const geo = await geocodeStartLocation(clean);
+
+  tripState.startLocation = geo?.formatted_address || clean;
+  tripState.startLat = Number.isFinite(Number(geo?.lat)) ? Number(geo.lat) : null;
+  tripState.startLng = Number.isFinite(Number(geo?.lng)) ? Number(geo.lng) : null;
+
+  if (input) input.value = tripState.startLocation;
+
+  if (status) {
+    status.textContent = hasStartCoordinates()
+      ? 'Starting location selected and ready for route optimization.'
+      : 'Starting location selected. Google Maps will still use the label.';
+  }
+}
+
+function isStartSuggestionNearDestination(item, destination) {
+  const description = normalizeDuplicateText(
+    item?.description ||
+    item?.secondary_text ||
+    item?.address ||
+    item?.main_text ||
+    item?.name ||
+    ''
+  );
+
+  const destinationCity = normalizeDuplicateText(
+    String(destination || '').split(',')[0] || ''
+  );
+
+  if (!description || !destinationCity) return false;
+
+  // Strict block for the issue we just saw.
+  if (description.includes('corpus christi')) return false;
+
+  // Normal local match.
+  if (description.includes(destinationCity)) return true;
+
+  // Small nearby-city allowance for South Padre Island.
+  if (
+    destinationCity.includes('south padre island') &&
+    (
+      description.includes('south padre island') ||
+      description.includes('port isabel') ||
+      description.includes('padre blvd') ||
+      description.includes('padre boulevard')
+    )
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
+let startLocationSuggestTimer = null;
+
+function setupStartLocationAutocomplete() {
+  const input = document.getElementById('startLocationInput');
+  const list = document.getElementById('startLocationSuggestions');
+
+  if (!input || !list) return;
+
+  if (input.dataset.startAutocompleteReady === 'true') return;
+  input.dataset.startAutocompleteReady = 'true';
+
+  setupSuggestionKeyboard(input, list);
+
+  input.addEventListener('input', () => {
+    clearTimeout(startLocationSuggestTimer);
+
+    const value = input.value.trim().slice(0, 160);
+    const destination = (
+      document.getElementById('destinationInput')?.value ||
+      tripState.destination ||
+      ''
+    ).trim();
+
+    if (value.length < 2 || !destination) {
+      hideSuggestionList(list);
+      clearSuggestionHighlight(list);
+      return;
+    }
+
+    startLocationSuggestTimer = setTimeout(async () => {
+      let suggestions = [];
+
+      // 1) Try city-bounded local search first.
+      const localQuery = `${value} ${destination}`;
+      const localUrl = await buildCityBoundedPlaceSearchUrl(localQuery, destination);
+      const localRes = await fetch(localUrl);
+
+      if (localRes.ok) {
+        const localData = await localRes.json().catch(() => ({}));
+
+        const localPlaces = rankStartLocationSuggestions(
+          dedupePlacesFrontend(localData.results || []),
+          value,
+          destination
+        )
+          .filter((place) => isStartSuggestionNearDestination(place, destination))
+          .slice(0, 7);
+
+        suggestions = localPlaces.map((place) => ({
+          description: place.address
+            ? `${place.name}, ${place.address}`
+            : place.name,
+          main_text: place.name || place.address || value,
+          secondary_text: place.address || '',
+          place,
+          source: 'place_search',
+        }));
+      }
+
+      // 2) Only use autocomplete if local search found nothing.
+      // Also filter autocomplete results so Corpus Christi does not slip in.
+      if (!suggestions.length) {
+        const predictions = await fetchAutocomplete(`${value} ${destination}`);
+
+        suggestions = (predictions || [])
+          .filter((item) => !isGenericStartPrediction(item, value, destination))
+          .filter((item) => isStartSuggestionNearDestination(item, destination))
+          .slice(0, 7)
+          .map((item) => ({
+            description: item.description || item.main_text || value,
+            main_text: item.main_text || item.description || value,
+            secondary_text: item.secondary_text || '',
+            source: 'autocomplete',
+          }));
+      }
+
+      if (!suggestions.length) {
+        hideSuggestionList(list);
+        clearSuggestionHighlight(list);
+        return;
+      }
+
+      renderSuggestionList(list, suggestions, async (item) => {
+        const place = item.place || null;
+
+        if (place) {
+          tripState.startLocation = place.address
+            ? `${place.name}, ${place.address}`
+            : (place.name || item.description || value);
+
+          tripState.startLat = Number.isFinite(Number(place.lat)) ? Number(place.lat) : null;
+          tripState.startLng = Number.isFinite(Number(place.lng)) ? Number(place.lng) : null;
+
+          input.value = tripState.startLocation;
+
+          const status = document.getElementById('startLocationStatus');
+          if (status) {
+            status.textContent = hasStartCoordinates()
+              ? 'Starting location selected and ready for route optimization.'
+              : 'Starting location selected. Google Maps will still use the label.';
+          }
+        } else {
+          await setStartLocationFromLabel(item.description || item.main_text || value);
+        }
+
+        hideSuggestionList(list);
+        clearSuggestionHighlight(list);
+      });
+    }, 250);
+  });
+
+  input.addEventListener('blur', () => {
+    setTimeout(() => {
+      hideSuggestionList(list);
+      clearSuggestionHighlight(list);
+    }, 150);
+  });
+
+  input.addEventListener('focus', () => {
+    const value = input.value.trim();
+
+    if (value.length >= 2) {
+      input.dispatchEvent(new Event('input'));
+    }
+  });
+}
 
     function renderPlannerProfileSummary() {
       const el = document.getElementById('plannerProfileSummary');
@@ -3763,6 +4353,7 @@ function setupCategoryAutoComplete() {
     const params = new URLSearchParams(window.location.search);
     const qParam = params.get('q');
     const destParam = params.get('dest');
+    const startParam = params.get('start');
     const daysParam = parseInt(params.get('days'));
     const interestsParam = params.get('interests');
 
@@ -3804,6 +4395,8 @@ renderPlannerProfileSummary();
 setupCharLeftCounters();
 setupDestinationAutocomplete();
 setupCategoryAutoComplete();
+setupStartLocationAutocomplete();
+setupPlannerEnterShortcuts();
 
 if (destParam) {
   preloadCategoryPillsFromInterests(interestsParam);
@@ -3815,6 +4408,27 @@ if (destParam) {
 } else if (qParam) {
   document.getElementById('q').value = qParam;
   runSearch();
+}
+
+if (startParam) {
+  const startInput = document.getElementById('startLocationInput');
+  const cleanStart = startParam.trim().slice(0, 160);
+
+  tripState.startLocation = cleanStart;
+
+  if (startInput) {
+    startInput.value = cleanStart;
+  }
+
+  geocodeStartLocation(cleanStart).then((geo) => {
+    if (!geo) return;
+    tripState.startLocation = geo.formatted_address || cleanStart;
+    tripState.startLat = Number.isFinite(Number(geo.lat)) ? Number(geo.lat) : null;
+    tripState.startLng = Number.isFinite(Number(geo.lng)) ? Number(geo.lng) : null;
+
+    const input = document.getElementById('startLocationInput');
+    if (input) input.value = tripState.startLocation;
+  }).catch(() => {});
 }
 
 
