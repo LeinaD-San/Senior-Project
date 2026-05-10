@@ -353,10 +353,40 @@
     }
 
     function nextUrl() {
-      return qs('next') || '/planner';
+      return (
+        qs('next') ||
+    localStorage.getItem('tragent_account_return_url') ||
+    '/planner'
+  );
     }
 
-    document.getElementById('backLink').href = nextUrl();
+    function buildPlannerUrlFromTrip(t) {
+      const params = new URLSearchParams();
+
+      if (t.destination) params.set('dest', t.destination);
+      if (t.days) params.set('days', String(t.days));
+
+      if (Array.isArray(t.interests) && t.interests.length) {
+        params.set('interests', t.interests.join(','));
+      }
+
+      if (t.group_type) params.set('group_type', t.group_type);
+      if (t.pace) params.set('pace', t.pace);
+      if (t.budget) params.set('budget', t.budget);
+      if (t.place_style) params.set('place_style', t.place_style);
+
+      if (typeof t.food_focus === 'boolean') {
+        params.set('food_focus', String(t.food_focus));
+      } else if (t.food_focus !== undefined && t.food_focus !== null) {
+        params.set('food_focus', String(t.food_focus));
+      }
+
+      const query = params.toString();
+      return query ? `/planner?${query}` : '/planner';
+    }
+
+    let accountReturnURL = nextUrl();
+    document.getElementById('backLink').href = accountReturnURL;
 
     function getToken() {
       return localStorage.getItem('tragent_token') || '';
@@ -400,10 +430,11 @@
     }
 
     function goPlanner() {
-      window.location.href = nextUrl();
+      window.location.href = accountReturnURL || nextUrl() || '/planner';
     }
 
     function goCreateTrip() {
+      localStorage.removeItem('tragent_account_return_url');
       window.location.href = '/planner';
     }
 
@@ -437,10 +468,17 @@
       updateContinueUi();
     }
 
-    function continueLastTrip() {
+    async function continueLastTrip() {
       const id = getLastTripId();
       if (!id) return;
-      window.location.href = `/planner?trip_id=${encodeURIComponent(id)}`;
+      
+      try {
+        await authFetch(`/trips/${id}`);
+        window.location.href = `/planner?trip_id=${encodeURIComponent(id)}`;
+      } catch {
+        forgetLastTrip();
+        window.location.href = accountReturnURL || `/planner`;
+      }
     }
 
     function clearTemplateDest() {
@@ -1184,7 +1222,28 @@
         deleteBtn.addEventListener('click', async () => {
           const ok = window.confirm(`Delete “${t.title || 'Trip'}”? This cannot be undone.`);
           if (!ok) return;
+
+          const fallbackPlannerUrl = buildPlannerUrlFromTrip(t);
+
+          console.log('Deleting trip:', t.id);
+          console.log('Fallback planner URL:', fallbackPlannerUrl);
+
+          localStorage.setItem('tragent_account_return_url', fallbackPlannerUrl);
+
           await authFetch(`/trips/${t.id}`, { method: 'DELETE' }).catch(() => {});
+
+          const deleteId = String(t.id);
+          const lastTripId = localStorage.getItem('tragent_last_trip_id');
+
+          if (lastTripId === deleteId){
+            localStorage.removeItem('tragent_last_trip_id');
+            localStorage.removeItem('tragent_last_trip_title');
+            updateContinueUi();
+          }
+
+          accountReturnURL = fallbackPlannerUrl;
+          document.getElementById('backLink').href = accountReturnURL;
+
           await loadTrips().catch(() => {});
         });
 
