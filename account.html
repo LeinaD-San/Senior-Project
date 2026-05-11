@@ -143,11 +143,52 @@
     .hidden{display:none}
 
     .toggleRow{display:flex;align-items:center;gap:8px;color:var(--muted);font-weight:800;font-size:12px;margin-top:10px}
-    .templateGrid{display:grid;grid-template-columns:1fr;gap:10px;margin-top:10px}
-    .templateCard{border:1px solid var(--border);background:white;border-radius:14px;padding:12px;display:flex;gap:12px;align-items:center}
-    .templateMeta{flex:1;min-width:0}
-    .templateTitle{font-weight:900}
-    .templateDesc{margin-top:2px;color:var(--muted);font-size:12px;line-height:1.35}
+    .templateGrid{
+      display:grid;
+      grid-template-columns:1fr;
+      gap:10px;
+      margin-top:10px;
+    }
+
+    .templateCard{
+      border:1px solid var(--border);
+      background:white;
+      border-radius:14px;
+      padding:12px;
+      display:grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap:10px;
+      align-items:center;
+      width:100%;
+      max-width:100%;
+      overflow:hidden;
+    }
+
+    .templateCard .meta{
+      min-width:0;
+      overflow:hidden;
+    }
+
+    .templateCard .name{
+      font-weight:900;
+      white-space:nowrap;
+      overflow:hidden;
+      text-overflow:ellipsis;
+    }
+
+    .templateCard .desc{
+      margin-top:2px;
+      color:var(--muted);
+      font-size:12px;
+      line-height:1.35;
+      white-space:nowrap;
+      overflow:hidden;
+      text-overflow:ellipsis;
+    }
+
+    .templateCard .btn{
+      white-space:nowrap;
+    }
 
     .primary{
       width:100%;
@@ -302,6 +343,29 @@
 
 
     .empty{color:var(--muted);border:1px dashed var(--border);border-radius:12px;padding:12px;font-size:13px}
+
+    .templateActions{
+      display:flex;
+      gap:8px;
+      align-items:center;
+      flex-shrink:0;
+    }
+
+    .iconMenuBtn{
+      width:38px;
+      height:38px;
+      border:1px solid var(--border);
+      background:white;
+      border-radius:12px;
+      font-weight:900;
+      font-size:20px;
+      line-height:1;
+      cursor:pointer;
+    }
+
+    .iconMenuBtn:hover{
+      background:rgba(11,18,32,.04);
+    }
   </style>
 </head>
 
@@ -536,6 +600,205 @@
         .replaceAll("'", '&#039;');
     }
 
+
+    function openAccountModal({ title, message, actions }) {
+      let modal = document.getElementById('accountFeedbackModal');
+
+      if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'accountFeedbackModal';
+        modal.style.cssText = 'display:none; position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:10000; padding:18px; overflow:auto;';
+        modal.innerHTML = `
+          <div style="max-width:560px; margin:40px auto; background:white; border-radius:16px; overflow:hidden; box-shadow:0 18px 48px rgba(11,18,32,.22);">
+            <div style="display:flex; justify-content:space-between; align-items:center; padding:14px 16px; border-bottom:1px solid rgba(11,18,32,.12);">
+              <div style="font-weight:900" id="accountFeedbackTitle">Trip feedback</div>
+              <button type="button" onclick="closeAccountModal()" style="border:none; background:transparent; font-size:18px; cursor:pointer;">✕</button>
+            </div>
+            <div style="padding:16px; color:rgba(11,18,32,.78); font-size:14px; line-height:1.45;" id="accountFeedbackBody"></div>
+            <div style="display:flex; gap:10px; justify-content:flex-end; padding:14px 16px; border-top:1px solid rgba(11,18,32,.12);" id="accountFeedbackActions"></div>
+          </div>
+        `;
+        document.body.appendChild(modal);
+      }
+
+      document.getElementById('accountFeedbackTitle').textContent = title || 'Trip feedback';
+      document.getElementById('accountFeedbackBody').innerHTML = message || '';
+
+      const actionsEl = document.getElementById('accountFeedbackActions');
+      actionsEl.innerHTML = '';
+
+      (actions || []).forEach((a) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.textContent = a.label;
+        btn.style.border = 'none';
+        btn.style.padding = '10px 12px';
+        btn.style.borderRadius = '12px';
+        btn.style.cursor = 'pointer';
+        btn.style.fontWeight = '900';
+        btn.style.background = a.variant === 'primary'
+          ? 'linear-gradient(135deg,var(--orange),var(--orange2))'
+          : 'rgba(11,18,32,.08)';
+        btn.style.color = a.variant === 'primary' ? 'white' : 'var(--ink)';
+        btn.addEventListener('click', () => a.onClick && a.onClick());
+        actionsEl.appendChild(btn);
+      });
+
+      modal.style.display = 'block';
+    }
+
+    function closeAccountModal() {
+      const modal = document.getElementById('accountFeedbackModal');
+      if (modal) modal.style.display = 'none';
+    }
+
+
+
+
+    let activeFeedbackTrip = null;
+    let activeFeedbackRating = null;
+    let activeFeedbackChanged = null;
+
+    function openTripFeedbackModal(trip) {
+      activeFeedbackTrip = trip;
+      activeFeedbackRating = trip.trip_rating || null;
+      activeFeedbackChanged =
+        typeof trip.trip_changed_from_ai === 'boolean'
+          ? trip.trip_changed_from_ai
+          : null;
+
+      const notes = trip.trip_feedback_notes || '';
+
+      openAccountModal({
+        title: `Rate: ${trip.title || 'Trip'}`,
+        message: `
+          <div>
+            <div style="font-weight:900;margin-bottom:8px;">1. Overall rating</div>
+            <div id="tripRatingOptions" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;">
+              ${[1, 2, 3, 4, 5].map((num) => `
+                <button type="button" data-rating="${num}" style="border:1px solid var(--border);background:white;color:var(--ink);border-radius:12px;padding:10px 13px;font-weight:900;cursor:pointer;">
+                  ${num}
+                </button>
+              `).join('')}
+            </div>
+
+            <div style="font-weight:900;margin-bottom:8px;">2. Did you change anything from the AI-generated trip?</div>
+            <div id="tripChangedOptions" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;">
+              <button type="button" data-changed="yes" style="border:1px solid var(--border);background:white;color:var(--ink);border-radius:12px;padding:10px 13px;font-weight:900;cursor:pointer;">Yes</button>
+              <button type="button" data-changed="no" style="border:1px solid var(--border);background:white;color:var(--ink);border-radius:12px;padding:10px 13px;font-weight:900;cursor:pointer;">No</button>
+            </div>
+
+            <div style="font-weight:900;margin-bottom:8px;">3. What should AI remember next time?</div>
+            <textarea
+              id="tripFeedbackNotesInput"
+              maxlength="2000"
+              placeholder="Example: I still like coffee shops, but one place was not my vibe. I liked scenic outdoor places more."
+              style="width:100%;min-height:96px;padding:10px 12px;border-radius:14px;border:1px solid var(--border);font-size:14px;resize:vertical;"
+            >${escapeHtml(notes)}</textarea>
+
+            <div style="margin-top:6px;font-size:12px;color:var(--muted);">
+              Mention specific places if one was great or not your vibe.
+            </div>
+          </div>
+        `,
+        actions: [
+          { label: 'Cancel', onClick: () => closeAccountModal() },
+          { label: 'Save Feedback', variant: 'primary', onClick: () => saveTripFeedback() },
+        ],
+      });
+
+      setTimeout(bindTripFeedbackEvents, 0);
+    }
+
+    function setFeedbackButtonStyle(btn, selected) {
+      btn.style.background = selected
+        ? 'linear-gradient(135deg,var(--orange),var(--orange2))'
+        : 'white';
+      btn.style.color = selected ? 'white' : 'var(--ink)';
+    }
+
+    function bindTripFeedbackEvents() {
+      const ratingWrap = document.getElementById('tripRatingOptions');
+      const changedWrap = document.getElementById('tripChangedOptions');
+
+      if (ratingWrap) {
+        ratingWrap.querySelectorAll('button[data-rating]').forEach((btn) => {
+          const selected = Number(btn.dataset.rating) === Number(activeFeedbackRating);
+          setFeedbackButtonStyle(btn, selected);
+
+          btn.addEventListener('click', () => {
+            activeFeedbackRating = Number(btn.dataset.rating);
+            ratingWrap.querySelectorAll('button[data-rating]').forEach((other) => {
+              setFeedbackButtonStyle(other, other === btn);
+            });
+          });
+        });
+      }
+
+      if (changedWrap) {
+        changedWrap.querySelectorAll('button[data-changed]').forEach((btn) => {
+          const value = btn.dataset.changed === 'yes';
+          const selected = activeFeedbackChanged === value;
+          setFeedbackButtonStyle(btn, selected);
+
+          btn.addEventListener('click', () => {
+            activeFeedbackChanged = value;
+            changedWrap.querySelectorAll('button[data-changed]').forEach((other) => {
+              setFeedbackButtonStyle(other, other === btn);
+            });
+          });
+        });
+      }
+    }
+
+    async function saveTripFeedback() {
+      if (!activeFeedbackTrip) return;
+
+      const notesInput = document.getElementById('tripFeedbackNotesInput');
+      const notes = (notesInput?.value || '').trim().slice(0, 2000);
+
+      if (!activeFeedbackRating) {
+        alert('Choose a 1–5 rating before saving feedback.');
+        return;
+      }
+
+      try {
+        await withAccountLoading('Saving feedback…', async () => {
+          await authFetch(`/trips/${activeFeedbackTrip.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              title: activeFeedbackTrip.title || 'Trip',
+              days: activeFeedbackTrip.days,
+              interests: activeFeedbackTrip.interests || [],
+              group_type: activeFeedbackTrip.group_type,
+              age_style: activeFeedbackTrip.age_style,
+              pace: activeFeedbackTrip.pace,
+              budget: activeFeedbackTrip.budget,
+              place_style: activeFeedbackTrip.place_style,
+              food_focus: activeFeedbackTrip.food_focus,
+              start_date: activeFeedbackTrip.start_date || null,
+              notes: activeFeedbackTrip.notes || null,
+
+              trip_rating: activeFeedbackRating,
+              trip_changed_from_ai: activeFeedbackChanged,
+              trip_feedback_notes: notes,
+            }),
+          });
+        });
+
+        closeAccountModal();
+        await loadTrips();
+      } catch (err) {
+        alert(String(err.message || err));
+      }
+    }
+
+    function getTripRatingLabel(t) {
+      if (!t.trip_rating) return '';
+      return `Rated ${t.trip_rating}/5`;
+    }
+
     function goPlanner() {
       window.location.href = accountReturnURL || nextUrl() || '/planner';
     }
@@ -639,10 +902,20 @@
 
     function getAllTemplates() {
       const custom = readCustomTemplates();
-      const map = { ...BUILTIN_TEMPLATES };
+      const deletedBuiltins = new Set(getDeletedBuiltinTemplateIds());
+
+      const map = {};
+
+      Object.values(BUILTIN_TEMPLATES).forEach((tpl) => {
+        if (!deletedBuiltins.has(tpl.id)) {
+          map[tpl.id] = tpl;
+        }
+      });
+
       custom.forEach((t) => {
         if (t && t.id) map[t.id] = t;
       });
+
       return map;
     }
 
@@ -653,39 +926,242 @@
     function renderTemplates() {
       const root = document.getElementById('templateList');
       if (!root) return;
+
       const templates = Object.values(getAllTemplates());
       root.innerHTML = '';
 
       templates.forEach((tpl) => {
         const row = document.createElement('div');
         row.className = 'templateCard';
-        const isCustom = String(tpl.id || '').startsWith('c_');
+
         row.innerHTML = `
-          <div class="templateMeta">
-            <div class="templateTitle">${escapeHtml(tpl.name || 'Template')}</div>
-            <div class="templateDesc">${escapeHtml(tpl.summary || '')}</div>
+          <div class="meta">
+            <div class="name">${escapeHtml(tpl.name || tpl.title || 'Template')}</div>
+            <div class="desc">${escapeHtml(tpl.description || '')}</div>
           </div>
-          <button class="primary" type="button" style="width:auto">Start</button>
-          ${isCustom ? '<button class="btn danger" type="button">Delete</button>' : ''}
+          <div class="templateActions">
+            <button class="btn" type="button">Open</button>
+            <button class="iconMenuBtn" type="button" title="Edit template">⋯</button>
+          </div>
         `;
 
-        const buttons = row.querySelectorAll('button');
-        const startBtn = buttons[0];
-        startBtn.addEventListener('click', () => startTemplate(tpl.id));
+        const openBtn = row.querySelector('.btn');
+        const menuBtn = row.querySelector('.iconMenuBtn');
 
-        if (isCustom) {
-          const deleteBtn = buttons[1];
-          deleteBtn.addEventListener('click', () => deleteTemplate(tpl.id));
-        }
+        openBtn.addEventListener('click', () => startTemplate(tpl.id));
+
+        menuBtn.addEventListener('click', () => {
+          openTemplateActions(tpl.id);
+        });
 
         root.appendChild(row);
       });
+        }
+
+    function openTemplateActions(templateId) {
+      const tpl = getAllTemplates()[templateId];
+      if (!tpl) return;
+
+      openAccountModal({
+        title: tpl.name || tpl.title || 'Template',
+        message: `
+          <div style="color:rgba(11,18,32,.75);font-size:14px;line-height:1.45;">
+            What would you like to do with this template?
+          </div>
+        `,
+        actions: [
+          {
+            label: 'Edit',
+            variant: 'primary',
+            onClick: () => {
+              closeAccountModal();
+              openTemplateEditor(templateId);
+            },
+          },
+          {
+            label: 'Delete',
+            onClick: () => {
+              closeAccountModal();
+              deleteTemplate(templateId);
+            },
+          },
+          {
+            label: 'Cancel',
+            onClick: () => closeAccountModal(),
+          },
+        ],
+      });
+    }
+
+
+    function openTemplateEditor(templateId) {
+      const tpl = getAllTemplates()[templateId];
+      if (!tpl) return;
+
+      openAccountModal({
+        title: `Edit: ${tpl.name || tpl.title || 'Template'}`,
+        message: `
+          <div style="display:flex;flex-direction:column;gap:10px;">
+            <input
+              id="editTplName"
+              class="field"
+              type="text"
+              maxlength="60"
+              value="${escapeHtml(tpl.name || tpl.title || '')}"
+              placeholder="Template name"
+            />
+
+            <textarea
+              id="editTplDesc"
+              class="field"
+              rows="3"
+              maxlength="400"
+              placeholder="Template description"
+              style="resize:vertical"
+            >${escapeHtml(tpl.description || '')}</textarea>
+
+            <input
+              id="editTplDays"
+              class="field"
+              type="number"
+              min="1"
+              max="7"
+              value="${escapeHtml(tpl.days || '')}"
+              placeholder="Days"
+            />
+
+            <input
+              id="editTplInterests"
+              class="field"
+              type="text"
+              maxlength="120"
+              value="${escapeHtml(tpl.interests || '')}"
+              placeholder="Interests, comma separated"
+            />
+          </div>
+        `,
+        actions: [
+          {
+            label: 'Cancel',
+            onClick: () => closeAccountModal(),
+          },
+          {
+            label: 'Save',
+            variant: 'primary',
+            onClick: () => saveTemplateEdit(templateId),
+          },
+        ],
+      });
+    }
+
+
+    function saveTemplateEdit(templateId) {
+      const oldTpl = getAllTemplates()[templateId];
+      if (!oldTpl) return;
+
+      const name = (document.getElementById('editTplName')?.value || '').trim().slice(0, 60);
+      const description = (document.getElementById('editTplDesc')?.value || '').trim().slice(0, 400);
+      const daysRaw = (document.getElementById('editTplDays')?.value || '').trim();
+      const interests = (document.getElementById('editTplInterests')?.value || '').trim().slice(0, 120);
+
+      if (!name) {
+        alert('Template name is required.');
+        return;
+      }
+
+      if (templateNameExists(name, templateId)) {
+        alert('A template with that name already exists. Choose a different name.');
+        return;
+      }
+
+      if (!description) {
+        alert('Template description is required.');
+        return;
+      }
+
+      let days = '';
+      if (daysRaw) {
+        const n = Number(daysRaw);
+        if (!Number.isFinite(n) || n < 1 || n > 7) {
+          alert('Days must be between 1 and 7.');
+          return;
+        }
+        days = String(Math.floor(n));
+      }
+
+      const updatedTpl = {
+        ...oldTpl,
+        id: templateId,
+        name,
+        description,
+        days,
+        interests,
+        summary: `${days ? `${days} day${days === '1' ? '' : 's'} · ` : ''}${interests || 'custom'}`,
+        profile: oldTpl.profile || {
+          group_type: 'solo',
+          pace: 'balanced',
+          budget: 'medium',
+          place_style: 'mix',
+          food_focus: 'true',
+        },
+      };
+
+      const templates = readCustomTemplates();
+      const existingIndex = templates.findIndex((t) => t?.id === templateId);
+
+      if (existingIndex >= 0) {
+        templates[existingIndex] = updatedTpl;
+      } else {
+        templates.unshift({
+          ...updatedTpl,
+          id: `c_${templateId}`,
+          original_builtin_id: templateId,
+        });
+
+        const deleted = getDeletedBuiltinTemplateIds();
+        if (!deleted.includes(templateId)) {
+          deleted.push(templateId);
+          writeDeletedBuiltinTemplateIds(deleted);
+        }
+      }
+
+      writeCustomTemplates(templates);
+      closeAccountModal();
+      renderTemplates();
+    }
+
+    function getDeletedBuiltinTemplateIds() {
+      try {
+        const data = JSON.parse(localStorage.getItem('tragent_deleted_builtin_templates') || '[]');
+        return Array.isArray(data) ? data : [];
+      } catch {
+        return [];
+      }
+    }
+
+    function writeDeletedBuiltinTemplateIds(ids) {
+      localStorage.setItem('tragent_deleted_builtin_templates', JSON.stringify(ids || []));
     }
 
     function deleteTemplate(templateId) {
-      const templates = readCustomTemplates();
-      const next = templates.filter((t) => t?.id !== templateId);
-      writeCustomTemplates(next);
+      const ok = window.confirm('Delete this template?');
+      if (!ok) return;
+
+      const isCustom = String(templateId || '').startsWith('c_');
+
+      if (isCustom) {
+        const templates = readCustomTemplates();
+        const next = templates.filter((t) => t?.id !== templateId);
+        writeCustomTemplates(next);
+      } else {
+        const deleted = getDeletedBuiltinTemplateIds();
+
+        if (!deleted.includes(templateId)) {
+          deleted.push(templateId);
+          writeDeletedBuiltinTemplateIds(deleted);
+        }
+      }
+
       renderTemplates();
     }
 
@@ -788,6 +1264,21 @@
     }
 
 
+    function normalizeTemplateName(name) {
+      return String(name || '').trim().toLowerCase();
+    }
+
+    function templateNameExists(name, ignoreTemplateId = null) {
+      const target = normalizeTemplateName(name);
+      if (!target) return false;
+
+      return Object.values(getAllTemplates()).some((tpl) => {
+        if (ignoreTemplateId && tpl.id === ignoreTemplateId) return false;
+        return normalizeTemplateName(tpl.name || tpl.title) === target;
+      });
+    }
+
+
     function setupAccountEnterShortcuts() {
       const templateDest = document.getElementById('templateDest');
       if (templateDest) {
@@ -795,7 +1286,7 @@
           if (e.key !== 'Enter') return;
           e.preventDefault();
 
-          const firstStartButton = document.querySelector('.templateCard .primary');
+          const firstStartButton = document.querySelector('.templateCard .btn');
           if (firstStartButton) {
             firstStartButton.click();
           }
@@ -843,6 +1334,11 @@
 
       if (!name) {
         if (errorEl) errorEl.textContent = 'Template name is required.';
+        return;
+      }
+
+      if (templateNameExists(name)) {
+        if (errorEl) errorEl.textContent = 'A template with that name already exists. Choose a different name.';
         return;
       }
       if (!description) {
@@ -1429,15 +1925,18 @@
             <div class="meta">
               <div class="name">${escapeHtml(t.title || 'Trip')}</div>
               <div class="desc">${escapeHtml(getTripSubTitle(t))}</div>
+              ${getTripRatingLabel(t) ? `<div class="desc">${escapeHtml(getTripRatingLabel(t))}</div>` : ''}
               <div class="tripThumbs" data-trip-thumbs="${escapeHtml(t.id)}"></div>
             </div>
             <button class="btn" type="button">Open</button>
+            <button class="btn" type="button">Rate</button>
             <button class="btn danger" type="button">Delete</button>
           `;
 
           const buttons = row.querySelectorAll('button');
           const openBtn = buttons[0];
-          const deleteBtn = buttons[1];
+          const rateBtn = buttons[1];
+          const deleteBtn = buttons[2];
 
           const thumbsContainer = row.querySelector('.tripThumbs');
           loadTripThumbnails(t, thumbsContainer).catch(() => {
@@ -1447,6 +1946,10 @@
 
           openBtn.addEventListener('click', () => {
             window.location.href = `/planner?trip_id=${encodeURIComponent(t.id)}`;
+          });
+
+          rateBtn.addEventListener('click', () => {
+            openTripFeedbackModal(t);
           });
 
           deleteBtn.addEventListener('click', async () => {

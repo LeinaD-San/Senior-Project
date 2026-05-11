@@ -119,6 +119,11 @@ def on_startup():
             conn.execute(text("ALTER TABLE trips ADD COLUMN IF NOT EXISTS interests_json TEXT"))
             #Adds a trip level notes reminder column
             conn.execute(text("ALTER TABLE trips ADD COLUMN IF NOT EXISTS notes TEXT"))
+
+            conn.execute(text("ALTER TABLE trips ADD COLUMN IF NOT EXISTS trip_rating INTEGER"))
+            conn.execute(text("ALTER TABLE trips ADD COLUMN IF NOT EXISTS trip_changed_from_ai INTEGER"))
+            conn.execute(text("ALTER TABLE trips ADD COLUMN IF NOT EXISTS trip_feedback_notes TEXT"))
+
             #Adds a category column to each trip item.
             #This lets each stop be labled as food, coffee, parks, and museums. 
             conn.execute(text("ALTER TABLE trip_item ADD COLUMN IF NOT EXISTS category VARCHAR"))
@@ -157,6 +162,10 @@ class TripCreate(BaseModel):
     #optional notes or reminders for the whole trip
     notes: Optional[str] = Field(default=None, max_length=3000)
 
+    trip_rating: Optional[int] = Field(default=None, ge=1, le=5)
+    trip_changed_from_ai: Optional[bool] = None
+    trip_feedback_notes: Optional[str] = Field(default=None, max_length=2000)
+
 
 #this is so that trips can be edited later instead of creating a new one.
 class TripUpdate(BaseModel):
@@ -175,6 +184,10 @@ class TripUpdate(BaseModel):
     start_date: Optional[str] = None
 
     notes: Optional[str] = Field(default=None, max_length=3000)
+
+    trip_rating: Optional[int] = Field(default=None, ge=1, le=5)
+    trip_changed_from_ai: Optional[bool] = None
+    trip_feedback_notes: Optional[str] = Field(default=None, max_length=2000)
 
 
 class RegisterPayload(BaseModel):
@@ -523,6 +536,9 @@ def create_trip(payload: TripCreate, db: db_dependency, user: models.User = Depe
         start_date=payload.start_date,
         interests_json=_encode_interests(payload.interests),
         notes=payload.notes,
+        trip_rating=payload.trip_rating,
+        trip_changed_from_ai=1 if payload.trip_changed_from_ai else 0 if payload.trip_changed_from_ai is not None else None,
+        trip_feedback_notes=payload.trip_feedback_notes,
         )
     db.add(trip)
     db.commit()
@@ -541,6 +557,9 @@ def create_trip(payload: TripCreate, db: db_dependency, user: models.User = Depe
         "food_focus": bool(trip.food_focus),
         "start_date": trip.start_date,
         "notes": trip.notes,
+        "trip_rating": trip.trip_rating,
+        "trip_changed_from_ai": bool(trip.trip_changed_from_ai) if trip.trip_changed_from_ai is not None else None,
+        "trip_feedback_notes": trip.trip_feedback_notes,
         }
 
 
@@ -562,6 +581,9 @@ def list_trips(db: db_dependency, user: models.User = Depends(get_current_user))
             "food_focus": bool(t.food_focus),
             "start_date": t.start_date,
             "notes": t.notes,
+            "trip_rating": t.trip_rating,
+            "trip_changed_from_ai": bool(t.trip_changed_from_ai) if t.trip_changed_from_ai is not None else None,
+            "trip_feedback_notes": t.trip_feedback_notes,
         }
         for t in trips
     ]
@@ -596,6 +618,12 @@ def update_trip(trip_id: int, payload: TripUpdate, db: db_dependency, user: mode
         trip.start_date = payload.start_date
     if payload.notes is not None:
         trip.notes = payload.notes
+    if payload.trip_rating is not None:
+        trip.trip_rating = payload.trip_rating
+    if payload.trip_changed_from_ai is not None:
+        trip.trip_changed_from_ai = 1 if payload.trip_changed_from_ai else 0
+    if payload.trip_feedback_notes is not None:
+        trip.trip_feedback_notes = payload.trip_feedback_notes
 
     db.commit()
     db.refresh(trip)
@@ -613,6 +641,9 @@ def update_trip(trip_id: int, payload: TripUpdate, db: db_dependency, user: mode
         "food_focus": bool(trip.food_focus),
         "start_date": trip.start_date,
         "notes": trip.notes,
+        "trip_rating": trip.trip_rating,
+        "trip_changed_from_ai": bool(trip.trip_changed_from_ai) if trip.trip_changed_from_ai is not None else None,
+        "trip_feedback_notes": trip.trip_feedback_notes,
         }
 
 
@@ -710,6 +741,9 @@ def get_trip(trip_id: int, db: db_dependency, user: models.User = Depends(get_cu
         "food_focus": bool(trip.food_focus),
         "start_date": trip.start_date,
         "notes": trip.notes,
+        "trip_rating": trip.trip_rating,
+        "trip_changed_from_ai": bool(trip.trip_changed_from_ai) if trip.trip_changed_from_ai is not None else None,
+        "trip_feedback_notes": trip.trip_feedback_notes,
         "items": [
             {
                 "id": i.id,

@@ -51,6 +51,13 @@ class Trip(Base):
     #This would also be different from the TripItem.notes because this belongs to the whole trip
     notes = Column(Text, nullable=True)
 
+    # Trip feedback for future AI personalization.
+    # This is intentionally trip-level feedback, not category-level feedback,
+    # so one disliked coffee shop does not mean the user dislikes all coffee shops.
+    trip_rating = Column(Integer, nullable=True)
+    trip_changed_from_ai = Column(Integer, nullable=True)
+    trip_feedback_notes = Column(Text, nullable=True)
+
 class TripItem(Base):
     __tablename__ = 'trip_item'
 
@@ -67,7 +74,8 @@ class TripItem(Base):
     name = Column(String, nullable=False)
     notes = Column(Text, default='')
 
-#stores what kind of shop this is. 
+
+    #stores what kind of shop this is. 
     category = Column(String, nullable = True)
 
     lat = Column(Float, nullable=True)
