@@ -260,6 +260,16 @@ class AIItineraryResponse(BaseModel):
     days: int
     itinerary: list[AIDay]
 
+class TravelChatMessage(BaseModel):
+    role: str
+    content: str
+
+
+class TravelChatRequest(BaseModel):
+    message: str
+    context: dict
+    history: list[TravelChatMessage] = []
+
 class ReorderPayload(BaseModel):
     ordered_item_ids: List[int] = Field(min_length=1)
 
@@ -1184,24 +1194,24 @@ async def place_details(place_id:str):
 '''
         #TEMP CREDIT SAVER RESP DATA
 
-        response_data = {
-            "place_id": place.get("place_id"),
-            "name": place.get("name"),
-            "address": place.get("formatted_address"),
-            "rating": place.get("rating"),
-            "price_level": place.get("price_level"),
-            "phone": place.get("formatted_phone_number"),
-            "website": place.get("website"),
-            "lat": location.get("lat"),
-            "lng": location.get("lng"),
-            "hours": (place.get("opening_hours") or {}).get("weekday_text", []),
-            "open_now": (place.get("opening_hours") or {}).get("open_now", None),
-            "photos": photos,
-        }
+    response_data = {
+        "place_id": place.get("place_id"),
+        "name": place.get("name"),
+        "address": place.get("formatted_address"),
+        "rating": place.get("rating"),
+        "price_level": place.get("price_level"),
+        "phone": place.get("formatted_phone_number"),
+        "website": place.get("website"),
+        "lat": location.get("lat"),
+        "lng": location.get("lng"),
+        "hours": (place.get("opening_hours") or {}).get("weekday_text", []),
+        "open_now": (place.get("opening_hours") or {}).get("open_now", None),
+        "photos": photos,
+    }
 
-        PLACE_DETAILS_CACHE[place_id] = (time.time(), response_data)
+    PLACE_DETAILS_CACHE[place_id] = (time.time(), response_data)
 
-        return response_data
+    return response_data
 
 
 @app.get("/places/nearby")
@@ -2555,6 +2565,138 @@ async def ai_itinerary(body: ItineraryRequest):
     }
 
 
+@app.post("/ai/travel-chat")
+async def ai_travel_chat(payload: TravelChatRequest):
+    message = (payload.message or "").strip()
+    context = payload.context or {}
+
+    if not message:
+        raise HTTPException(status_code=400, detail="Message is required")
+
+    destination = str(context.get("destination") or "your trip").strip()
+    days = context.get("days")
+    active_day = context.get("active_day")
+    profile = context.get("profile") or {}
+    itinerary = context.get("itinerary") or []
+
+    if not openai_client:
+        raise HTTPException(
+            status_code=503,
+            detail="AI chat is not configured. Check OPENAI_API_KEY."
+        )
+
+    trip_summary_lines = []
+
+    for day_info in itinerary:
+        day = day_info.get("day")
+        stops = day_info.get("stops") or []
+
+        if not stops:
+            trip_summary_lines.append(f"Day {day}: No stops planned yet.")
+            continue
+
+        stop_lines = []
+        for stop in stops:
+            name = stop.get("name") or "Unnamed stop"
+            address = stop.get("address") or ""
+            arrival = stop.get("arrival_time") or ""
+            departure = stop.get("departure_time") or ""
+            notes = stop.get("notes") or ""
+
+            time_text = ""
+            if arrival and departure:
+                time_text = f" ({arrival}-{departure})"
+            elif arrival:
+                time_text = f" ({arrival})"
+
+            extra = []
+            if address:
+                extra.append(f"Address: {address}")
+            if notes:
+                extra.append(f"Notes: {notes}")
+
+            extra_text = f" - {'; '.join(extra)}" if extra else ""
+            stop_lines.append(f"- {name}{time_text}{extra_text}")
+
+        trip_summary_lines.append(f"Day {day}:\n" + "\n".join(stop_lines))
+
+    trip_summary = "\n\n".join(trip_summary_lines)
+
+    profile_summary = (
+        f"Group type: {profile.get('group_type', 'unknown')}\n"
+        f"Pace: {profile.get('pace', 'unknown')}\n"
+        f"Budget: {profile.get('budget', 'unknown')}\n"
+        f"Place style: {profile.get('place_style', 'unknown')}\n"
+        f"Food focus: {profile.get('food_focus', 'unknown')}"
+    )
+    system_prompt = """
+    You are the AI Trip Assistant inside a travel planning app called trAgent.
+
+    Your job is to give short, easy-to-read travel advice based on the user's current trip.
+
+    Style rules:
+    - Keep responses brief.
+    - Use simple language.
+    - Do not overwhelm the user.
+    - Prefer 2 to 4 short bullet points.
+    - Only give more detail if the user asks.
+    - Avoid long sections like "What’s working" and "Opportunities to improve" unless the user asks for a full review.
+    - Do not list too many places at once.
+    - If suggesting changes, give only the top 1 or 2 recommendations.
+    - Do not claim that you directly changed the itinerary.
+    - If the itinerary is empty, suggest one practical next step.
+
+    Answer format:
+    - Start with one short sentence.
+    - Then use a few bullets if useful.
+    - End with one simple next-step suggestion.
+    """
+
+    user_prompt = f"""
+Current trip context:
+
+Destination: {destination}
+Trip length: {days} day(s)
+Current active day: {active_day}
+
+Traveler profile:
+{profile_summary}
+
+Itinerary:
+{trip_summary}
+
+User question:
+{message}
+"""
+
+    try:
+        response = openai_client.responses.create(
+            model="gpt-5-mini",
+            input=[
+                {
+                    "role": "system",
+                    "content": system_prompt.strip(),
+                },
+                {
+                    "role": "user",
+                    "content": user_prompt.strip(),
+                },
+            ],
+        )
+
+        reply = response.output_text.strip()
+
+        if not reply:
+            reply = "I could not generate a response for that trip question."
+
+        return {"reply": reply}
+
+    except Exception as e:
+        print("AI travel chat error:", repr(e))
+        raise HTTPException(
+            status_code=500,
+            detail="AI trip assistant failed to respond."
+        )
 
 def hhmm_to_minutes(hhmm:str) -> int:
     h,m = hhmm.split(":")
