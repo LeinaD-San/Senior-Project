@@ -2125,19 +2125,38 @@
       return getProtectedDaysFromCurrentTrip().size > 0;
     }
 
-    
     function mergeAiItineraryWithExistingStops(aiItinerary, options = {}) {
-      const protectExistingDays = options.protectExistingDays !== false;
-      const protectedDays = protectExistingDays
-        ? getProtectedDaysFromCurrentTrip()
-        : new Set();
+      const mode = options.mode || 'fill_empty_days';
+      const targetDay = Number(options.targetDay) || tripState.activeDay;
 
+      const protectedDays = new Set();
       const nextItemsByDay = {};
 
       for (let d = 1; d <= tripState.days; d++) {
-        nextItemsByDay[d] = protectedDays.has(d)
-          ? [...(tripState.itemsByDay[d] || [])]
-          : [];
+        const existingItems = [...(tripState.itemsByDay[d] || [])];
+
+        if (mode === 'regenerate_all_days') {
+          nextItemsByDay[d] = [];
+          continue;
+        }
+
+        if (mode === 'regenerate_current_day') {
+          if (d === targetDay) {
+            nextItemsByDay[d] = [];
+          } else {
+            nextItemsByDay[d] = existingItems;
+            if (existingItems.length > 0) protectedDays.add(d);
+          }
+          continue;
+        }
+
+        // Default: fill empty days only / keep existing days
+        if (existingItems.length > 0) {
+          nextItemsByDay[d] = existingItems;
+          protectedDays.add(d);
+        } else {
+          nextItemsByDay[d] = [];
+        }
       }
 
       const returnedDays = aiItinerary || [];
@@ -2146,6 +2165,8 @@
         const day = Number(dayInfo.day);
 
         if (!day || day < 1 || day > tripState.days) return;
+
+        if (mode === 'regenerate_current_day' && day !== targetDay) return;
 
         if (protectedDays.has(day)) return;
 
@@ -2169,9 +2190,11 @@
       return {
         nextItemsByDay,
         protectedDays,
+        mode,
+        targetDay,
       };
     }
-
+    
 
     function persistEnabled() {
       return !!(getToken() && tripState.currentTripId);
@@ -3014,11 +3037,12 @@
       return new Promise((resolve) => {
         const protectedDays = getProtectedDaysFromCurrentTrip();
 
-        console.log('AI generation protected days:', [...protectedDays]);
-        console.log('Current itemsByDay:', tripState.itemsByDay);
-
         if (!protectedDays.size) {
-          resolve({ cancelled: false, protectExistingDays: false });
+          resolve({
+            cancelled: false,
+            mode: 'regenerate_all_days',
+            targetDay: tripState.activeDay,
+          });
           return;
         }
 
@@ -3026,6 +3050,8 @@
           .sort((a, b) => a - b)
           .map((day) => `Day ${day}`)
           .join(', ');
+
+        const currentDay = tripState.activeDay;
 
         openUiModal({
           title: 'Auto-generate itinerary',
@@ -3035,7 +3061,7 @@
                 You already have places added on <b>${escapeHtml(dayList)}</b>.
               </p>
               <p style="margin-bottom:0;">
-                Do you want AI to keep those days, or regenerate the whole itinerary?
+                Choose how AI should update your trip.
               </p>
             </div>
           `,
@@ -3044,24 +3070,47 @@
               label: 'Cancel',
               onClick: () => {
                 closeUiModal();
-                resolve({ cancelled: true, protectExistingDays: true });
+                resolve({
+                  cancelled: true,
+                  mode: 'fill_empty_days',
+                  targetDay: currentDay,
+                });
               },
             },
             {
-              label: 'Regenerate all days',
+              label: `Current day`,
               onClick: () => {
                 closeUiModal();
-                resolve({ cancelled: false, protectExistingDays: false });
+                resolve({
+                  cancelled: false,
+                  mode: 'regenerate_current_day',
+                  targetDay: currentDay,
+                });
               },
             },
             {
-              label: 'Keep existing days',
-              variant: 'primary',
+              label: 'All days',
               onClick: () => {
                 closeUiModal();
-                resolve({ cancelled: false, protectExistingDays: true });
+                resolve({
+                  cancelled: false,
+                  mode: 'regenerate_all_days',
+                  targetDay: currentDay,
+                });
               },
             },
+            {
+              label: 'Fill empty days only',
+              varient: 'primary',
+              onClick: () => {
+                closeUiModal();
+                 resolve({
+                  cancelled: false,
+                  mode: 'fill_empty_days',
+                  targetDay: currentDay,
+                });
+              }
+            }
           ],
         });
       });
@@ -3118,7 +3167,8 @@
           }
 
           const merged = mergeAiItineraryWithExistingStops(data.itinerary || [], {
-            protectExistingDays: generationMode.protectExistingDays,
+            mode: generationMode.mode,
+            targetDay: generationMode.targetDay,
           });
           const nextItemsByDay = merged.nextItemsByDay;
           protectedDays = merged.protectedDays;
@@ -3132,10 +3182,23 @@
           renderItinerary();
         });
 
-        uiNotify('AI itinerary', protectedDays.size > 0
-          ? 'AI itinerary generated while keeping your existing day plans.'
-          : 'AI itinerary generated!'
-      );
+        let successMessage = 'AI itinerary generated!';
+
+          if (generationMode.mode === 'fill_empty_days') {
+            successMessage = protectedDays.size > 0
+              ? 'AI filled empty days while keeping your existing day plans.'
+              : 'AI itinerary generated!';
+          }
+
+          if (generationMode.mode === 'regenerate_current_day') {
+            successMessage = `AI regenerated Day ${generationMode.targetDay}.`;
+          }
+
+          if (generationMode.mode === 'regenerate_all_days') {
+            successMessage = 'AI regenerated the full itinerary.';
+          }
+
+          uiNotify('AI itinerary', successMessage);
 
       } catch (err) {
         console.error('RUN AI GENERATE ERROR:', err);
