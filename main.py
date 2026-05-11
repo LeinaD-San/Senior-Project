@@ -1647,6 +1647,28 @@ def rank_places_for_profile(
     return ranked
 
 
+def randomize_ranked_place_pool(
+    ranked_places: list[dict],
+    pool_size: int = 8,
+    keep_top_count: int = 1,
+) -> list[dict]:
+    """
+    Keeps generated trips from repeating the exact same places every time.
+
+    """
+    if not ranked_places:
+        return []
+
+    top_pool = list(ranked_places[:max(1, pool_size)])
+
+    guaranteed_top = top_pool[:max(0, keep_top_count)]
+    rotating_pool = top_pool[max(0, keep_top_count):]
+
+    secrets.SystemRandom().shuffle(rotating_pool)
+
+    return guaranteed_top + rotating_pool
+
+
 
 @app.post("/ai/replace-stop")
 async def ai_replace_stop(body: ReplaceStopRequest):
@@ -2502,7 +2524,7 @@ async def ai_itinerary(body: ItineraryRequest):
         
         results = await search_places_for_interests(body.destination, interest, profile)
        # TEMP FOR CREDIT SAVER RETURN LATER results = results[:5]
-        results = results[:3]
+        results = results[:10]
 
         scored = []
         
@@ -2528,8 +2550,16 @@ async def ai_itinerary(body: ItineraryRequest):
             seen.add(pid)
             ranked.append(place)
 
-        grouped_places[interest] = ranked
-        print(f"{interest} finished in {time.perf_counter() - interest_started:.2f}s")
+        grouped_places[interest] = randomize_ranked_place_pool(
+            ranked,
+            pool_size=10,
+            keep_top_count=0,
+        )
+
+        print(
+            f"{interest} finished in {time.perf_counter() - interest_started:.2f}s "
+            f"with {len(grouped_places[interest])} rotated candidates"
+        )
 
     max_stops_per_day = 4
     if profile.pace == "relaxed":
