@@ -848,6 +848,8 @@
               <button class="primary" id="saveBtn" onclick="saveTrip()" disabled style="flex:1">
                 Save Trip
               </button>
+
+
             </div>
           </div>
         </div>
@@ -2556,10 +2558,7 @@
                 <input type="time" data-action="depart" value="${escapeHtml(p.departure_time || '')}" style="padding:8px 10px;border-radius:12px;border:1px solid var(--border);font-size:13px;" />
               </label>
             </div>
-            <label style="display:flex;gap:6px;align-items:center;font-size:12px;color:var(--muted);font-weight:800">
-              <input type="checkbox" ${p.completed ? 'checked' : ''} data-action="complete" data-id="${p.id || ''}" />
-              Completed
-            </label>
+
             <textarea data-action="notes" data-id="${p.id || ''}" placeholder="Notes" style="width:100%;margin-top:6px;padding:8px 10px;border-radius:12px;border:1px solid var(--border);font-size:13px;" rows="1" maxlength="1000">${escapeHtml(p.notes || '')}</textarea>
             <div data-action="notes-left" style="margin-top:6px;font-size:12px;color:rgba(11,18,32,.55);" aria-live="polite"></div>
           </div>
@@ -2614,21 +2613,6 @@
           }
         });
       }
-
-        const completeEl = div.querySelector('input[data-action="complete"]');
-        if (completeEl) {
-          completeEl.addEventListener('change', async (e) => {
-            const checked = e.target.checked;
-            p.completed = checked;
-            if (persistEnabled() && p.id) {
-              await fetch(`/trips/${tripState.currentTripId}/items/${p.id}` , {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
-                body: JSON.stringify({ completed: checked }),
-              }).catch(() => {});
-            }
-          });
-        }
 
         const notesEl = div.querySelector('textarea[data-action="notes"]');
         if (notesEl) {
@@ -3763,11 +3747,20 @@
           });
           const trip = await resTrip.json().catch(() => ({}));
           if (!resTrip.ok) {
+          if (resTrip.status === 401 || resTrip.status === 403) {
             const nextUrl = currentNextUrlWithAutosave();
             savePendingTripDraft(nextUrl);
             window.location.href = `/login?next=${encodeURIComponent(nextUrl)}`;
             return;
           }
+
+          console.error('SAVE TRIP FAILED:', resTrip.status, trip);
+          throw new Error(
+            typeof trip.detail === 'string'
+              ? trip.detail
+              : JSON.stringify(trip.detail || trip || 'Could not save trip.')
+          );
+        }
 
           tripState.currentTripId = trip.id;
           localStorage.setItem('tragent_last_trip_id', String(trip.id));
