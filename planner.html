@@ -639,6 +639,140 @@
       color:rgba(11,18,32,.55);
       line-height:1.35;
     }
+
+    .travelChatWidget{
+      position:fixed;
+      right:22px;
+      bottom:22px;
+      z-index:10002;
+      display:flex;
+      flex-direction:column;
+      align-items:flex-end;
+      gap:12px;
+    }
+
+    .travelChatBubble{
+      width:58px;
+      height:58px;
+      border:none;
+      border-radius:999px;
+      background:linear-gradient(135deg,var(--orange),var(--orange2));
+      color:white;
+      font-weight:900;
+      cursor:pointer;
+      box-shadow:0 18px 48px rgba(255,106,0,.35);
+    }
+
+    .travelChatBubble:hover{
+      transform:translateY(-1px);
+    }
+
+    .travelChatPanel{
+      width:min(380px, calc(100vw - 32px));
+      height:min(560px, calc(100vh - 110px));
+      background:white;
+      border:1px solid var(--border);
+      border-radius:18px;
+      box-shadow:0 18px 60px rgba(11,18,32,.22);
+      overflow:hidden;
+      display:flex;
+      flex-direction:column;
+    }
+    .travelChatPanel.hidden{
+      display:none;
+    }
+
+    .travelChatHead{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:12px;
+      padding:14px 14px;
+      border-bottom:1px solid var(--border);
+      background:rgba(255,255,255,.94);
+    }
+
+    .travelChatTitle{
+      font-weight:900;
+      font-size:15px;
+    }
+
+    .travelChatSub{
+      margin-top:2px;
+      color:var(--muted);
+      font-size:12px;
+    }
+
+    .travelChatClose{
+      border:none;
+      background:transparent;
+      font-size:18px;
+      cursor:pointer;
+      color:var(--muted);
+    }
+
+    .travelChatClose:hover{
+      color:var(--ink);
+    }
+
+    .travelChatMessages{
+      flex:1;
+      overflow:auto;
+      padding:14px;
+      background:rgba(11,18,32,.025);
+    }
+
+    .travelChatInputRow{
+      display:flex;
+      gap:8px;
+      padding:12px;
+      border-top:1px solid var(--border);
+      background:white;
+    }
+
+    .travelChatInputRow input{
+      flex:1;
+      min-width:0;
+      padding:11px 12px;
+      border-radius:14px;
+      border:1px solid var(--border);
+      font-size:14px;
+      outline:none;
+    }
+
+    .travelChatInputRow button{
+      border:none;
+      padding:11px 12px;
+      border-radius:14px;
+      background:linear-gradient(135deg,var(--orange),var(--orange2));
+      color:white;
+      font-weight:900;
+      cursor:pointer;
+    }
+
+    .chatBubble{
+      max-width:86%;
+      padding:10px 12px;
+      border-radius:14px;
+      margin-bottom:10px;
+      font-size:14px;
+      line-height:1.45;
+      white-space:pre-wrap;
+    }
+
+    .chatBubble.user{
+      margin-left:auto;
+      background:linear-gradient(135deg,var(--orange),var(--orange2));
+      color:white;
+      font-weight:700;
+    }
+
+    .chatBubble.ai{
+      margin-right:auto;
+      background:white;
+      border:1px solid var(--border);
+      color:rgba(11,18,32,.82);
+    }
   </style>
 </head>
 
@@ -699,6 +833,8 @@
             >
               Open Day in Google Maps
             </button>
+
+
 
             <div style="display:flex; gap:10px;">
               <button
@@ -838,6 +974,48 @@
       <div style="display:flex; gap:10px; justify-content:flex-end; padding:14px 16px; border-top:1px solid rgba(11,18,32,.12);" id="uiModalActions"></div>
     </div>
   </div>
+
+ 
+
+<div id="travelChatWidget" class="travelChatWidget">
+  <div id="travelChatPanel" class="travelChatPanel hidden">
+    <div class="travelChatHead">
+      <div>
+        <div class="travelChatTitle">AI Trip Assistant</div>
+        <div class="travelChatSub">Ask about your current trip.</div>
+      </div>
+
+      <button type="button" class="travelChatClose" onclick="closeTravelChatbot()">✕</button>
+    </div>
+
+    <div id="travelChatMessages" class="travelChatMessages">
+      <div class="chatBubble ai">
+        Hi! Ask me about your trip, places, pacing, food stops, or what to improve.
+      </div>
+    </div>
+
+    <div class="travelChatInputRow">
+      <input
+        id="travelChatInput"
+        type="text"
+        placeholder="Ask about this trip..."
+        maxlength="500"
+        autocomplete="off"
+      />
+
+      <button type="button" onclick="sendTravelChatMessage()">Send</button>
+    </div>
+  </div>
+
+  <button
+    type="button"
+    class="travelChatBubble"
+    onclick="toggleTravelChatbot()"
+    aria-label="Open AI trip assistant"
+  >
+    AI
+  </button>
+</div>
 
   <div id="aiOverlay" class="aiOverlay hidden" role="status" aria-live="polite" aria-label="AI loading">
     <div class="aiOverlayCard">
@@ -1333,6 +1511,132 @@
       }
 
       window.open(url, '_blank', 'noopener,noreferrer');
+    }
+
+    function openTravelChatbot() {
+      const panel = document.getElementById('travelChatPanel');
+      const input = document.getElementById('travelChatInput');
+
+      if (!panel) return;
+
+      panel.classList.remove('hidden');
+
+      setTimeout(() => {
+        if (input) input.focus();
+      }, 0);
+    }
+
+    function closeTravelChatbot() {
+      const panel = document.getElementById('travelChatPanel');
+
+      if (!panel) return;
+
+      panel.classList.add('hidden');
+    }
+
+    function toggleTravelChatbot() {
+      const panel = document.getElementById('travelChatPanel');
+
+      if (!panel) return;
+
+      if (panel.classList.contains('hidden')) {
+        openTravelChatbot();
+      } else {
+        closeTravelChatbot();
+      }
+    }
+
+    function appendTravelChatMessage(role, message) {
+      const messages = document.getElementById('travelChatMessages');
+      if (!messages) return;
+
+      const bubble = document.createElement('div');
+      bubble.className = `chatBubble ${role === 'user' ? 'user' : 'ai'}`;
+      bubble.textContent = message;
+
+      messages.appendChild(bubble);
+      messages.scrollTop = messages.scrollHeight;
+    }
+
+    function buildTravelChatContext() {
+      const days = [];
+
+      for (let d = 1; d <= tripState.days; d++) {
+        const stops = (tripState.itemsByDay[d] || []).map((place, index) => ({
+          position: place.position || index + 1,
+          name: place.name || '',
+          address: place.address || '',
+          rating: place.rating || null,
+          arrival_time: place.arrival_time || null,
+          departure_time: place.departure_time || null,
+          notes: place.notes || '',
+        }));
+
+        days.push({
+          day: d,
+          stops,
+        });
+      }
+
+      return {
+        destination: tripState.destination || document.getElementById('destinationInput')?.value || '',
+        days: tripState.days,
+        active_day: tripState.activeDay,
+        profile: personalizationProfile,
+        itinerary: days,
+      };
+    }
+
+    async function sendTravelChatMessage() {
+      const input = document.getElementById('travelChatInput');
+      if (!input) return;
+
+      const message = input.value.trim().slice(0, 500);
+
+      if (!message) return;
+
+      input.value = '';
+
+      appendTravelChatMessage('user', message);
+
+      try {
+        appendTravelChatMessage('ai', 'Thinking…');
+
+        const res = await fetch('/ai/travel-chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message,
+            context: buildTravelChatContext(),
+            history: [],
+          }),
+        });
+
+        const data = await res.json().catch(() => ({}));
+
+        const messages = document.getElementById('travelChatMessages');
+        const thinkingBubble = messages?.lastElementChild;
+
+        if (thinkingBubble && thinkingBubble.textContent === 'Thinking…') {
+          thinkingBubble.remove();
+        }
+
+        if (!res.ok) {
+          appendTravelChatMessage('ai', data.detail || 'Sorry, I could not answer that right now.');
+          return;
+        }
+
+        appendTravelChatMessage('ai', data.reply || 'I could not generate a response.');
+      } catch (err) {
+        const messages = document.getElementById('travelChatMessages');
+        const thinkingBubble = messages?.lastElementChild;
+
+        if (thinkingBubble && thinkingBubble.textContent === 'Thinking…') {
+          thinkingBubble.remove();
+        }
+
+        appendTravelChatMessage('ai', 'Sorry, the trip assistant could not connect right now.');
+      }
     }
 
 
@@ -2194,11 +2498,7 @@
         targetDay,
       };
     }
-    
 
-    function persistEnabled() {
-      return !!(getToken() && tripState.currentTripId);
-    }
 
     function persistEnabled() {
       return !!(getToken() && tripState.currentTripId);
@@ -3101,7 +3401,7 @@
             },
             {
               label: 'Fill empty days only',
-              varient: 'primary',
+              variant: 'primary',
               onClick: () => {
                 closeUiModal();
                  resolve({
@@ -4572,6 +4872,15 @@ setupDestinationAutocomplete();
 setupCategoryAutoComplete();
 setupStartLocationAutocomplete();
 setupPlannerEnterShortcuts();
+
+const travelChatInput = document.getElementById('travelChatInput');
+if (travelChatInput) {
+  travelChatInput.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    sendTravelChatMessage();
+  });
+}
 
 /* TEMP PAUSE TO SAVE CREDITS OPEN LATER
 if (destParam) {
