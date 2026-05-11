@@ -3984,7 +3984,7 @@ function setupCategoryAutoComplete() {
   input.addEventListener('input', () => {
     const value = input.value.trim().slice(0, 120);
 
-    if (value.length < 2) {
+    if (value.length < 4) {
       hideSuggestionList(list);
       clearSuggestionHighlight(list);
       return;
@@ -4233,7 +4233,7 @@ function setupStartLocationAutocomplete() {
       ''
     ).trim();
 
-    if (value.length < 2 || !destination) {
+    if (value.length < 4 || !destination) {
       hideSuggestionList(list);
       clearSuggestionHighlight(list);
       return;
@@ -4318,7 +4318,7 @@ function setupStartLocationAutocomplete() {
         hideSuggestionList(list);
         clearSuggestionHighlight(list);
       });
-    }, 250);
+    }, 500);
   });
 
   input.addEventListener('blur', () => {
@@ -4398,6 +4398,7 @@ setupCategoryAutoComplete();
 setupStartLocationAutocomplete();
 setupPlannerEnterShortcuts();
 
+/* TEMP PAUSE TO SAVE CREDITS OPEN LATER
 if (destParam) {
   preloadCategoryPillsFromInterests(interestsParam);
 
@@ -4408,6 +4409,25 @@ if (destParam) {
 } else if (qParam) {
   document.getElementById('q').value = qParam;
   runSearch();
+}
+ CREDIT SAVER BELOW THIS COMMENT */
+if (destParam) {
+  preloadCategoryPillsFromInterests(interestsParam);
+
+  if (qParam) {
+    document.getElementById('q').value = qParam;
+  }
+
+  // TEMP CREDIT SAVER:
+  // Do not auto-run search when planner loads.
+  // Press Search manually when real results are needed.
+  // runSearch();
+
+} else if (qParam) {
+  document.getElementById('q').value = qParam;
+
+  // TEMP CREDIT SAVER:
+  // runSearch();
 }
 
 if (startParam) {
