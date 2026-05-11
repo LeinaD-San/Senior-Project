@@ -2106,6 +2106,77 @@
       return tripState.itemsByDay[tripState.activeDay].some(x => x.place_id === placeId);
     }
 
+
+    function getProtectedDaysFromCurrentTrip() {
+      const protectedDays = new Set();
+
+      for (let d = 1; d <= tripState.days; d++) {
+        const items = tripState.itemsByDay[d] || [];
+
+        if (items.length > 0) {
+          protectedDays.add(d);
+        }
+      }
+
+      return protectedDays;
+    }
+
+    function hasExistingItineraryStops() {
+      return getProtectedDaysFromCurrentTrip().size > 0;
+    }
+
+    
+    function mergeAiItineraryWithExistingStops(aiItinerary, options = {}) {
+      const protectExistingDays = options.protectExistingDays !== false;
+      const protectedDays = protectExistingDays
+        ? getProtectedDaysFromCurrentTrip()
+        : new Set();
+
+      const nextItemsByDay = {};
+
+      for (let d = 1; d <= tripState.days; d++) {
+        nextItemsByDay[d] = protectedDays.has(d)
+          ? [...(tripState.itemsByDay[d] || [])]
+          : [];
+      }
+
+      const returnedDays = aiItinerary || [];
+
+      returnedDays.forEach((dayInfo) => {
+        const day = Number(dayInfo.day);
+
+        if (!day || day < 1 || day > tripState.days) return;
+
+        if (protectedDays.has(day)) return;
+
+        const places = dayInfo.stops || dayInfo.places || [];
+
+        nextItemsByDay[day] = places.map((place, idx) => ({
+          place_id: place.place_id,
+          name: place.name,
+          address: place.address || '',
+          rating: place.rating || null,
+          lat: place.lat || null,
+          lng: place.lng || null,
+          notes: '',
+          completed: false,
+          position: idx + 1,
+          arrival_time: place.arrival_time || null,
+          departure_time: place.departure_time || null,
+        }));
+      });
+
+      return {
+        nextItemsByDay,
+        protectedDays,
+      };
+    }
+
+
+    function persistEnabled() {
+      return !!(getToken() && tripState.currentTripId);
+    }
+
     function persistEnabled() {
       return !!(getToken() && tripState.currentTripId);
     }
@@ -2938,6 +3009,64 @@
       });
   };
 
+
+    function askAiGenerationMode() {
+      return new Promise((resolve) => {
+        const protectedDays = getProtectedDaysFromCurrentTrip();
+
+        console.log('AI generation protected days:', [...protectedDays]);
+        console.log('Current itemsByDay:', tripState.itemsByDay);
+
+        if (!protectedDays.size) {
+          resolve({ cancelled: false, protectExistingDays: false });
+          return;
+        }
+
+        const dayList = [...protectedDays]
+          .sort((a, b) => a - b)
+          .map((day) => `Day ${day}`)
+          .join(', ');
+
+        openUiModal({
+          title: 'Auto-generate itinerary',
+          message: `
+            <div>
+              <p style="margin-top:0;">
+                You already have places added on <b>${escapeHtml(dayList)}</b>.
+              </p>
+              <p style="margin-bottom:0;">
+                Do you want AI to keep those days, or regenerate the whole itinerary?
+              </p>
+            </div>
+          `,
+          actions: [
+            {
+              label: 'Cancel',
+              onClick: () => {
+                closeUiModal();
+                resolve({ cancelled: true, protectExistingDays: true });
+              },
+            },
+            {
+              label: 'Regenerate all days',
+              onClick: () => {
+                closeUiModal();
+                resolve({ cancelled: false, protectExistingDays: false });
+              },
+            },
+            {
+              label: 'Keep existing days',
+              variant: 'primary',
+              onClick: () => {
+                closeUiModal();
+                resolve({ cancelled: false, protectExistingDays: true });
+              },
+            },
+          ],
+        });
+      });
+    }
+
     async function runAiGenerate() {
       const destination = (document.getElementById('destinationInput').value || tripState.destination || '').trim().slice(0, 120);
       document.getElementById('destinationInput').value = destination;
@@ -2958,7 +3087,13 @@
             .split(',')
             .map(s => s.trim())
             .filter(Boolean);
+      const generationMode = await askAiGenerationMode();
 
+      if (generationMode.cancelled) {
+        return;
+      }
+
+      let protectedDays = new Set();
       try {
         await withAiLoading('Generating itinerary…', async () => {
           console.log('ABOUT TO CALL /ai/itinerary');
@@ -2982,38 +3117,11 @@
             throw new Error(data.detail || 'AI itinerary request failed');
           }
 
-          const nextItemsByDay = {};
-          for (let d = 1; d <= tripState.days; d++) nextItemsByDay[d] = [];
-
-          const returnedDays = data.itinerary || [];
-          returnedDays.forEach((dayInfo) => {
-            const day = dayInfo.day;
-            if (!nextItemsByDay[day]) nextItemsByDay[day] = [];
-
-            const places = dedupePlacesFrontend(dayInfo.stops || dayInfo.places || []);
-
-            const mappedPlaces = places.map((place, idx) => ({
-              place_id: place.place_id,
-              name: place.name,
-              address: place.address || '',
-              rating: place.rating || null,
-              lat: place.lat || null,
-              lng: place.lng || null,
-              notes: '',
-              completed: false,
-              position: idx + 1,
-              arrival_time: place.arrival_time || null,
-              departure_time: place.departure_time || null,
-            }));
-
-            const routeOrderedPlaces = orderStopsByNearestNeighbor(mappedPlaces);
-
-            routeOrderedPlaces.forEach((place, idx) => {
-              place.position = idx + 1;
-            });
-
-            nextItemsByDay[day] = routeOrderedPlaces;
+          const merged = mergeAiItineraryWithExistingStops(data.itinerary || [], {
+            protectExistingDays: generationMode.protectExistingDays,
           });
+          const nextItemsByDay = merged.nextItemsByDay;
+          protectedDays = merged.protectedDays;
 
           tripState.destination = destination;
           tripState.itemsByDay = nextItemsByDay;
@@ -3024,7 +3132,11 @@
           renderItinerary();
         });
 
-        uiNotify('AI itinerary', 'AI itinerary generated!');
+        uiNotify('AI itinerary', protectedDays.size > 0
+          ? 'AI itinerary generated while keeping your existing day plans.'
+          : 'AI itinerary generated!'
+      );
+
       } catch (err) {
         console.error('RUN AI GENERATE ERROR:', err);
         uiNotify('AI auto-generate failed', String(err.message || err));
