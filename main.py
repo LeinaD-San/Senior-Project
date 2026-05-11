@@ -49,6 +49,13 @@ app = FastAPI(title="Travel Agent API")
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 
 
+#TEMP CREDIT SAVER CACHE
+PLACES_SEARCH_CACHE = {}
+PLACES_SEARCH_CACHE_TTL_SECONDS = 60 * 60  # 1 hour
+
+PLACE_DETAILS_CACHE = {}
+PLACE_DETAILS_CACHE_TTL_SECONDS = 60 * 60 * 24  # 24 hours
+
 @app.exception_handler(OperationalError)
 def sqlalchemy_operational_error_handler(request, exc):
     return JSONResponse(
@@ -862,46 +869,6 @@ def account_page():
     return FileResponse(BASE_DIR / "account.html", media_type="text/html")   
 
 
-#Google Maps
-'''
-@app.get("/places/search")
-async def places_search(q: str, lat: Optional[float] = None, lng: Optional[float] = None, radius: int = 30000):
-    api_key = os.getenv("GOOGLE_MAPS_API_KEY")
-    if not api_key:
-        raise HTTPException(status_code=500, detail="GOOGLE_MAPS_API_KEY is not set")
-
-    url = "https://maps.googleapis.com/maps/api/place/textsearch/json"
-    params = {"query": q, "key": api_key}
-
-    if lat is not None and lng is not None:
-        params["location"] = f"{lat},{lng}"
-        params["radius"] = str(radius)
-
-    async with httpx.AsyncClient(timeout=15) as client:
-        r = await client.get(url, params=params)
-        r.raise_for_status()
-        data = r.json()
-
-    status = data.get("status")
-    if status not in ("OK", "ZERO_RESULTS"):
-        raise HTTPException(status_code=502, detail={"google_status": status, "error": data.get("error_message")})
-
-    results = []
-    for p in data.get("results", []):
-
-        location = p.get('geometry', {}).get('location',{})
-        results.append({
-            "place_id": p.get("place_id"),
-            "name": p.get("name"),
-            "address": p.get("formatted_address"),
-            "rating": p.get("rating"),
-            'lat':location.get('lat'),
-            'lng':location.get('lng')
-        })
-
-    return {"query": q, "count": len(results), "results": results}
-
-'''
 
 def get_real_weekday_index(start_date_str: str | None, day_offset: int) -> int:
     if start_date_str:
@@ -981,8 +948,18 @@ async def places_search(
     q: str = Query(min_length=1, max_length=120),
     lat: Optional[float] = None,
     lng: Optional[float] = None,
-    radius: int = 30000
+    radius: int = 30000,
 ):
+
+    cache_key = f"{q}|{lat}|{lng}|{radius}"
+    cached = PLACES_SEARCH_CACHE.get(cache_key)
+
+    if cached:
+        cached_at, cached_data = cached
+        if time.time() - cached_at < PLACES_SEARCH_CACHE_TTL_SECONDS:
+            print("Places search cache hit:", cache_key)
+            return cached_data
+
     api_key = os.getenv("GOOGLE_MAPS_API_KEY")
     if not api_key:
         raise HTTPException(status_code=500, detail="GOOGLE_MAPS_API_KEY is not set")
@@ -1135,6 +1112,15 @@ async def places_autocomplete(
 
 @app.get('/places/details/{place_id}')
 async def place_details(place_id:str):
+    #TEMP CREDIT SAVER CACHE
+    cached = PLACE_DETAILS_CACHE.get(place_id)
+
+    if cached:
+        cached_at, cached_data = cached
+        if time.time() - cached_at < PLACE_DETAILS_CACHE_TTL_SECONDS:
+            print("Place details cache hit:", place_id)
+            return cached_data
+    ###^       
     api_key = os.getenv("GOOGLE_MAPS_API_KEY")
 
     if not api_key:
@@ -1181,6 +1167,7 @@ async def place_details(place_id:str):
             photos.append(
                 f"https://maps.googleapis.com/maps/api/place/photo?maxwidth=1200&photo_reference={ref}&key={api_key}"
             )
+            '''
     return {
         "place_id": place.get("place_id"),
         "name": place.get("name"),
@@ -1194,7 +1181,27 @@ async def place_details(place_id:str):
         "hours": (place.get("opening_hours") or {}).get("weekday_text", []),
         "open_now": (place.get("opening_hours") or {}).get("open_now", None),
         "photos": photos,
-    }
+'''
+        #TEMP CREDIT SAVER RESP DATA
+
+        response_data = {
+            "place_id": place.get("place_id"),
+            "name": place.get("name"),
+            "address": place.get("formatted_address"),
+            "rating": place.get("rating"),
+            "price_level": place.get("price_level"),
+            "phone": place.get("formatted_phone_number"),
+            "website": place.get("website"),
+            "lat": location.get("lat"),
+            "lng": location.get("lng"),
+            "hours": (place.get("opening_hours") or {}).get("weekday_text", []),
+            "open_now": (place.get("opening_hours") or {}).get("open_now", None),
+            "photos": photos,
+        }
+
+        PLACE_DETAILS_CACHE[place_id] = (time.time(), response_data)
+
+        return response_data
 
 
 @app.get("/places/nearby")
@@ -2482,8 +2489,10 @@ async def ai_itinerary(body: ItineraryRequest):
     for interest in interests:
         interest_started = time.perf_counter()
 
+        
         results = await search_places_for_interests(body.destination, interest, profile)
-        results = results[:5]
+       # TEMP FOR CREDIT SAVER RETURN LATER results = results[:5]
+        results = results[:3]
 
         scored = []
         
