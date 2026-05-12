@@ -1589,75 +1589,175 @@
       };
     }
 
-    async function sendTravelChatMessage() {
-      const input = document.getElementById('travelChatInput');
-      if (!input) return;
+      function isTripSuggestionRequest(message) {
+        const text = String(message || '').toLowerCase().replace(/\s+/g, ' ').trim();
 
-      const message = input.value.trim().slice(0, 500);
+        return (
+          text.includes("i'm out of ideas") ||
+          text.includes('im out of ideas') ||
+          text.includes('out of ideas') ||
+          text.includes('do you have suggestions') ||
+          text.includes('any suggestions') ||
+          text.includes('suggestions') ||
+          text.includes('what should i add') ||
+          text.includes('what else should i add') ||
+          text.includes('how does my trip look') ||
+          text.includes('does my trip look good') ||
+          text.includes('review my trip') ||
+          text.includes('improve my trip') ||
+          text.includes('make my trip better') ||
+          text.includes('another stop?') 
 
-      if (!message) return;
-
-      input.value = '';
-
-      appendTravelChatMessage('user', message);
-
-
-      if (isGenerateEntireTripRequest(message)) {
-        offerGenerateEntireTripFromChat(message);
-        return;
+        );
       }
 
-      if (isRegenerateDayRequest(message)) {
-        offerRegenerateCurrentDayFromChat(message);
-        return;
-      }
-  
-      const addStopCategory = parseAddStopRequest(message);
+      function pickSuggestionCategoryForTrip(day) {
+        const allItems = Object.values(tripState.itemsByDay || {}).flat();
 
-      if (addStopCategory) {
-        await offerAddStopFromChat(addStopCategory, message);
-        return;
-      }
+        const text = allItems
+          .map((item) => `${item.name || ''} ${item.category || ''} ${item.address || ''}`)
+          .join(' ')
+          .toLowerCase();
 
-      try {
-        appendTravelChatMessage('ai', 'Thinking…');
+        const dayItems = tripState.itemsByDay?.[day] || [];
 
-        const res = await fetch('/ai/travel-chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            message,
-            context: buildTravelChatContext(),
-            history: [],
-          }),
-        });
-
-        const data = await res.json().catch(() => ({}));
-
-        const messages = document.getElementById('travelChatMessages');
-        const thinkingBubble = messages?.lastElementChild;
-
-        if (thinkingBubble && thinkingBubble.textContent === 'Thinking…') {
-          thinkingBubble.remove();
+        if (!dayItems.length) {
+          const starterOptions = ['food', 'coffee', 'parks'];
+          return starterOptions[Math.floor(Math.random() * starterOptions.length)];
         }
 
-        if (!res.ok) {
-          appendTravelChatMessage('ai', data.detail || 'Sorry, I could not answer that right now.');
+        const missingCategories = [];
+
+        if (!text.includes('coffee') && !text.includes('cafe')) {
+          missingCategories.push('coffee');
+        }
+
+        if (!text.includes('park') && !text.includes('outdoor') && !text.includes('scenic')) {
+          missingCategories.push('parks');
+        }
+
+        if (!text.includes('museum') && !text.includes('gallery')) {
+          missingCategories.push('museums');
+        }
+
+        if (!text.includes('restaurant') && !text.includes('food') && !text.includes('taco')) {
+          missingCategories.push('food');
+        }
+
+        if (!text.includes('shop') && !text.includes('market') && !text.includes('mall')) {
+          missingCategories.push('shopping');
+        }
+
+        if (missingCategories.length) {
+          return missingCategories[Math.floor(Math.random() * missingCategories.length)];
+        }
+
+        const fallbackOptions = ['food', 'coffee', 'parks', 'shopping', 'history'];
+        return fallbackOptions[Math.floor(Math.random() * fallbackOptions.length)];
+      }
+
+      async function offerTripSuggestionFromChat(message = '') {
+        const day = parseTargetDayFromMessage(message);
+        const currentStops = tripState.itemsByDay?.[day] || [];
+        const category = pickSuggestionCategoryForTrip(day);
+        const label = formatSuggestionCategoryLabel(category);
+
+        const intro = currentStops.length
+          ? `Your Day ${day} looks good so far. To make it feel more complete, I suggest adding one ${label} stop.`
+          : `Day ${day} is empty right now. I suggest starting with one ${label} stop.`;
+
+        appendTravelChatMessage('ai', intro);
+
+        await offerAddStopFromChat(category, `add ${category} to day ${day}`);
+      }
+
+      function formatSuggestionCategoryLabel(category) {
+        const labels = {
+          museums: 'museum',
+          parks: 'park',
+          coffee: 'coffee',
+          food: 'food',
+          shopping: 'shopping',
+          history: 'historic',
+          nightlife: 'nightlife',
+        };
+
+        return labels[category] || category;
+      }
+
+      async function sendTravelChatMessage() {
+        const input = document.getElementById('travelChatInput');
+        if (!input) return;
+
+        const message = input.value.trim().slice(0, 500);
+
+        if (!message) return;
+
+        input.value = '';
+
+        appendTravelChatMessage('user', message);
+
+        if (isGenerateEntireTripRequest(message)) {
+          offerGenerateEntireTripFromChat(message);
           return;
         }
 
-        appendTravelChatMessage('ai', data.reply || 'I could not generate a response.');
-      } catch (err) {
-        const messages = document.getElementById('travelChatMessages');
-        const thinkingBubble = messages?.lastElementChild;
-
-        if (thinkingBubble && thinkingBubble.textContent === 'Thinking…') {
-          thinkingBubble.remove();
+        if (isRegenerateDayRequest(message)) {
+          offerRegenerateCurrentDayFromChat(message);
+          return;
         }
 
-        appendTravelChatMessage('ai', 'Sorry, the trip assistant could not connect right now.');
+        if (isTripSuggestionRequest(message)) {
+          await offerTripSuggestionFromChat(message);
+          return;
+        }
+
+        const addStopCategory = parseAddStopRequest(message);
+
+        if (addStopCategory) {
+          await offerAddStopFromChat(addStopCategory, message);
+          return;
+        }
+
+        try {
+          appendTravelChatMessage('ai', 'Thinking…');
+
+          const res = await fetch('/ai/travel-chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              message,
+              context: buildTravelChatContext(),
+              history: [],
+            }),
+          });
+
+          const data = await res.json().catch(() => ({}));
+
+          const messages = document.getElementById('travelChatMessages');
+          const thinkingBubble = messages?.lastElementChild;
+
+          if (thinkingBubble && thinkingBubble.textContent === 'Thinking…') {
+            thinkingBubble.remove();
+          }
+
+          if (!res.ok) {
+            appendTravelChatMessage('ai', data.detail || 'Sorry, I could not answer that right now.');
+            return;
+          }
+
+          appendTravelChatMessage('ai', data.reply || 'I could not generate a response.');
+        } catch (err) {
+          const messages = document.getElementById('travelChatMessages');
+          const thinkingBubble = messages?.lastElementChild;
+
+          if (thinkingBubble && thinkingBubble.textContent === 'Thinking…') {
+            thinkingBubble.remove();
+          }
+
+          appendTravelChatMessage('ai', 'Sorry, the trip assistant could not connect right now.');
+        }
       }
-    }
 
     function isRegenerateDayRequest(message) {
       const text = String(message || '').toLowerCase().replace(/\s+/g, ' ').trim()
@@ -1710,11 +1810,11 @@
     function offerGenerateEntireTripFromChat(message) {
       appendTravelChatMessage(
         'ai',
-        `I can regenerate the entire trip based on your current destination and profile.`
+        `I can generate the entire trip based on your current destination and profile.`
       );
 
       openUiModal({
-        title: 'Regenerate entire trip?',
+        title: 'Generate entire trip?',
         message: `
           This will replace the current itinerary for all days.
           Your destination, profile, and selected interests will stay the same.
@@ -1725,7 +1825,7 @@
             onClick: () => closeUiModal(),
           },
           {
-            label: 'Regenerate Trip',
+            label: 'Generate Trip',
             variant: 'primary',
             onClick: async () => {
               closeUiModal();
@@ -1875,7 +1975,7 @@
     }
 
 
-    async function findChatRecommendedStop(category) {
+    async function findChatRecommendedStop(category, attempt = 1) {
       const destination =
         (tripState.destination || document.getElementById('destinationInput')?.value || '').trim();
 
@@ -1886,7 +1986,6 @@
       const query = `${category} in ${destination}`;
 
       const res = await fetch(`/places/search?q=${encodeURIComponent(query)}`);
-
       const data = await res.json().catch(() => ({}));
 
       if (!res.ok) {
@@ -1903,32 +2002,259 @@
         });
       });
 
-      const match = results.find((place) => {
+      const available = results.filter((place) => {
         return place && place.place_id && !usedPlaceIds.has(place.place_id);
       });
+
+      if (!available.length) {
+        throw new Error(`I could not find a new ${category} stop that is not already in your trip.`);
+      }
+
+      const match = available[(attempt - 1) % available.length];
 
       if (!match) {
         throw new Error(`I could not find a new ${category} stop that is not already in your trip.`);
       }
 
+      const detailsRes = await fetch(`/places/details/${encodeURIComponent(match.place_id)}`);
+      const details = await detailsRes.json().catch(() => ({}));
+
       return {
         place_id: match.place_id,
-        name: match.name,
-        address: match.address || '',
-        rating: match.rating || null,
-        lat: match.lat || null,
-        lng: match.lng || null,
-        photo_url: match.photo_url || '',
+        name: details.name || match.name || '',
+        address: details.address || match.address || '',
+        rating: details.rating || match.rating || null,
+        lat: details.lat ?? match.lat ?? null,
+        lng: details.lng ?? match.lng ?? null,
+        photos: Array.isArray(details.photos) && details.photos.length
+          ? details.photos
+          : match.photos || [],
+
+        photo_url:
+          (Array.isArray(details.photos) && details.photos[0]) ||
+          details.photo_url ||
+          match.photo_url ||
+          '',
+        phone: details.phone || '',
+        website: details.website || '',
+        open_now: details.open_now,
+        hours: Array.isArray(details.hours) ? details.hours : [],
+        category: category,
       };
     }
 
 
-    async function offerAddStopFromChat(category, message = '') {
+    function buildChatPlacePreviewHtml(place) {
+      const photos = Array.isArray(place.photos) && place.photos.length
+        ? place.photos
+        : place.photo_url
+          ? [place.photo_url]
+          : [];
+
+      const photoHtml = photos.length
+        ? `
+          <div
+            data-chat-preview-carousel
+            style="
+              position:relative;
+              width:100%;
+              height:230px;
+              border-radius:16px;
+              overflow:hidden;
+              background:rgba(11,18,32,.06);
+              margin-bottom:14px;
+            "
+          >
+            ${photos.slice(0, 6).map((url, index) => `
+              <img
+                data-chat-preview-img
+                src="${escapeHtml(url)}"
+                alt="${escapeHtml(place.name || 'Place photo')}"
+                style="
+                  width:100%;
+                  height:230px;
+                  object-fit:cover;
+                  display:${index === 0 ? 'block' : 'none'};
+                "
+              />
+            `).join('')}
+
+            ${
+              photos.length > 1
+                ? `
+                  <button
+                    type="button"
+                    onclick="prevChatPreviewPhoto(this)"
+                    style="
+                      position:absolute;
+                      left:10px;
+                      top:50%;
+                      transform:translateY(-50%);
+                      width:34px;
+                      height:34px;
+                      border:none;
+                      border-radius:999px;
+                      background:rgba(255,255,255,.90);
+                      font-weight:900;
+                      cursor:pointer;
+                      box-shadow:0 2px 8px rgba(0,0,0,.18);
+                    "
+                  >‹</button>
+
+                  <button
+                    type="button"
+                    onclick="nextChatPreviewPhoto(this)"
+                    style="
+                      position:absolute;
+                      right:10px;
+                      top:50%;
+                      transform:translateY(-50%);
+                      width:34px;
+                      height:34px;
+                      border:none;
+                      border-radius:999px;
+                      background:rgba(255,255,255,.90);
+                      font-weight:900;
+                      cursor:pointer;
+                      box-shadow:0 2px 8px rgba(0,0,0,.18);
+                    "
+                  >›</button>
+
+                  <div
+                    style="
+                      position:absolute;
+                      left:50%;
+                      bottom:10px;
+                      transform:translateX(-50%);
+                      display:flex;
+                      gap:6px;
+                    "
+                  >
+                    ${photos.slice(0, 6).map((_, index) => `
+                      <span
+                        data-chat-preview-dot
+                        style="
+                          width:8px;
+                          height:8px;
+                          border-radius:999px;
+                          background:${index === 0 ? 'var(--orange)' : 'rgba(11,18,32,.18)'};
+                          display:block;
+                        "
+                      ></span>
+                    `).join('')}
+                  </div>
+                `
+                : ''
+            }
+          </div>
+        `
+        : '';
+
+      const ratingHtml = place.rating
+        ? `<div><strong>Rating:</strong> ⭐ ${escapeHtml(String(place.rating))}</div>`
+        : '';
+
+      const openHtml =
+        typeof place.open_now === 'boolean'
+          ? `<div><strong>Open now:</strong> ${place.open_now ? 'Yes' : 'No'}</div>`
+          : '';
+
+      const phoneHtml = place.phone
+        ? `<div><strong>Phone:</strong> ${escapeHtml(place.phone)}</div>`
+        : '';
+
+      const websiteHtml = place.website
+        ? `<div><strong>Website:</strong> <a href="${escapeHtml(place.website)}" target="_blank" rel="noopener noreferrer">${escapeHtml(place.website)}</a></div>`
+        : '';
+
+      const hoursHtml =
+        Array.isArray(place.hours) && place.hours.length
+          ? `
+            <div style="margin-top:10px;">
+              <strong>Hours:</strong>
+              <div style="margin-top:6px; font-size:13px; color:rgba(11,18,32,.75); line-height:1.45;">
+                ${place.hours.slice(0, 3).map(h => `<div>${escapeHtml(h)}</div>`).join('')}
+              </div>
+            </div>
+          `
+          : '';
+
+      return `
+        <div style="line-height:1.45;">
+          ${photoHtml}
+
+          <div style="font-size:20px; font-weight:900; margin-bottom:4px;">
+            ${escapeHtml(place.name || 'Suggested Stop')}
+          </div>
+
+          <div style="color:rgba(11,18,32,.68); margin-bottom:10px;">
+            ${escapeHtml(place.address || 'No address available')}
+          </div>
+
+          <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:10px;">
+            ${ratingHtml}
+            ${openHtml}
+          </div>
+
+          <div style="display:grid; gap:6px; font-size:14px;">
+            ${phoneHtml}
+            ${websiteHtml}
+          </div>
+
+          ${hoursHtml}
+        </div>
+      `;
+}
+
+    function nextChatPreviewPhoto(button) {
+      const wrap = button.closest('[data-chat-preview-carousel]');
+      if (!wrap) return;
+
+      const imgs = Array.from(wrap.querySelectorAll('img[data-chat-preview-img]'));
+      const dots = Array.from(wrap.querySelectorAll('[data-chat-preview-dot]'));
+
+      if (!imgs.length) return;
+
+      const currentIndex = imgs.findIndex((img) => img.style.display !== 'none');
+      const nextIndex = (currentIndex + 1) % imgs.length;
+
+      imgs.forEach((img, index) => {
+        img.style.display = index === nextIndex ? 'block' : 'none';
+      });
+
+      dots.forEach((dot, index) => {
+        dot.style.background = index === nextIndex ? 'var(--orange)' : 'rgba(11,18,32,.18)';
+      });
+    }
+
+    function prevChatPreviewPhoto(button) {
+      const wrap = button.closest('[data-chat-preview-carousel]');
+      if (!wrap) return;
+
+      const imgs = Array.from(wrap.querySelectorAll('img[data-chat-preview-img]'));
+      const dots = Array.from(wrap.querySelectorAll('[data-chat-preview-dot]'));
+
+      if (!imgs.length) return;
+
+      const currentIndex = imgs.findIndex((img) => img.style.display !== 'none');
+      const prevIndex = (currentIndex - 1 + imgs.length) % imgs.length;
+
+      imgs.forEach((img, index) => {
+        img.style.display = index === prevIndex ? 'block' : 'none';
+      });
+
+      dots.forEach((dot, index) => {
+        dot.style.background = index === prevIndex ? 'var(--orange)' : 'rgba(11,18,32,.18)';
+      });
+    }
+
+
+    async function offerAddStopFromChat(category, message = '', attempt = 1) {
       const day = parseTargetDayFromMessage(message);
 
       try {
         await withAiLoading(`Finding a ${category} stop…`, async () => {
-          const place = await findChatRecommendedStop(category);
+          const place = await findChatRecommendedStop(category, attempt);
 
           appendTravelChatMessage(
             'ai',
@@ -1937,16 +2263,31 @@
 
           openUiModal({
             title: `Add to Day ${day}?`,
-            message: `
-              <div style="line-height:1.45;">
-                <strong>${escapeHtml(place.name)}</strong><br>
-                ${escapeHtml(place.address || 'No address available')}
-              </div>
-            `,
+            message: buildChatPlacePreviewHtml(place),
             actions: [
               {
                 label: 'Cancel',
-                onClick: () => closeUiModal(),
+                onClick: () => {
+                  closeUiModal();
+
+                  appendTravelChatMessage(
+                    'ai',
+                    `No problem — I won’t add that stop. You can ask me to try again or search for a different type of stop.`
+                  );
+                },
+              },
+              {
+                label: 'Try Another',
+                onClick: async () => {
+                  closeUiModal();
+
+                  appendTravelChatMessage(
+                    'ai',
+                    `Got it — I’ll look for another ${formatSuggestionCategoryLabel(category)} option for Day ${day}.`
+                  );
+
+                  await offerAddStopFromChat(category, message, attempt + 1);
+                },
               },
               {
                 label: 'Add Stop',
@@ -1954,10 +2295,9 @@
                 onClick: () => {
                   closeUiModal();
 
-                  const previousDay = tripState.activeDay;
                   tripState.activeDay = day;
-
                   renderDays();
+
                   addToTrip(place);
 
                   tripState.activeDay = day;
@@ -1977,7 +2317,7 @@
       } catch (err) {
         appendTravelChatMessage(
           'ai',
-          String(err.message || 'Sorry, I could not find a stop to add right now.')
+          String(err.message || 'Sorry, I could not find a good match. We can try again or search for a different type of stop.')
         );
       }
     }
@@ -1988,11 +2328,11 @@
 
       appendTravelChatMessage(
         'ai',
-        `I can regenerate Day ${day} based on your current destination and profile.`
+        `I can generate Day ${day} based on your current destination and profile.`
       );
 
       openUiModal({
-        title: `Regenerate Day ${day}?`,
+        title: `Generate Day ${day}?`,
         message: `
           This will replace the stops currently planned for Day ${day}.
           Other days will stay the same.
@@ -2003,7 +2343,7 @@
             onClick: () => closeUiModal(),
           },
           {
-            label: `Regenerate Day ${day}`,
+            label: `Generate Day ${day}`,
             variant: 'primary',
             onClick: async () => {
               closeUiModal();
@@ -2022,7 +2362,7 @@
         (tripState.destination || document.getElementById('destinationInput')?.value || '').trim();
 
       if (!destination) {
-        appendTravelChatMessage('ai', 'Add a destination first, then I can regenerate the day.');
+        appendTravelChatMessage('ai', 'Add a destination first, then I can renerate the day.');
         return;
       }
 
@@ -2038,7 +2378,7 @@
       }
 
       try {
-        await withAiLoading(`Regenerating Day ${day}…`, async () => {
+        await withAiLoading(`Generating Day ${day}…`, async () => {
           const res = await fetch('/ai/itinerary', {
             method: 'POST',
             headers,
@@ -2055,7 +2395,7 @@
           const data = await res.json().catch(() => ({}));
 
           if (!res.ok) {
-            throw new Error(data.detail || 'Could not regenerate the day.');
+            throw new Error(data.detail || 'Could not generate the day.');
           }
 
           const merged = mergeAiItineraryWithExistingStops(data.itinerary || [], {
@@ -2072,13 +2412,13 @@
 
           appendTravelChatMessage(
             'ai',
-            `Done — I regenerated Day ${day}. Review it and click Save Trip when you like it.`
+            `Done — I generated Day ${day}. Review it and click Save Trip when you like it.`
           );
         });
       } catch (err) {
         appendTravelChatMessage(
           'ai',
-          String(err.message || 'Sorry, I could not regenerate that day right now.')
+          String(err.message || 'Sorry, I could not generate that day right now.')
         );
       }
     }
@@ -3924,11 +4264,11 @@
           }
 
           if (generationMode.mode === 'regenerate_current_day') {
-            successMessage = `AI regenerated Day ${generationMode.targetDay}.`;
+            successMessage = `AI generated Day ${generationMode.targetDay}.`;
           }
 
           if (generationMode.mode === 'regenerate_all_days') {
-            successMessage = 'AI regenerated the full itinerary.';
+            successMessage = 'AI generated the full itinerary.';
           }
 
           uiNotify('AI itinerary', successMessage);
@@ -4164,107 +4504,189 @@
       await saveTripConfirmed();
     }
 
-    async function saveTripConfirmed() {
-      return withAiLoading('Saving trip...',async() => {
-          const token = getToken();
-          if (!token) {
-            const nextUrl = currentNextUrlWithAutosave();
-            savePendingTripDraft(nextUrl);
-            window.location.href = `/login?next=${encodeURIComponent(nextUrl)}`;
-            return;
-          }
+async function saveTripConfirmed() {
+  return withAiLoading('Saving trip...', async () => {
+    const token = getToken();
 
-          const destination = (document.getElementById('destinationInput').value || tripState.destination || '').trim() || 'Destination';
-          const title = getTripTitle() || generateDefaultTripTitle(destination);
-          if (!getTripTitle()){ setTripTitle(title);}
+    if (!token) {
+      const nextUrl = currentNextUrlWithAutosave();
+      savePendingTripDraft(nextUrl);
+      window.location.href = `/login?next=${encodeURIComponent(nextUrl)}`;
+      return;
+    }
 
-          const resTrip = await fetch('/trips', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-            body: JSON.stringify({
-              title,
-              destination,
-              days: tripState.days,
-              interests: getSelectedCategoryValues(),
-              group_type: personalizationProfile.group_type,
-              pace: personalizationProfile.pace,
-              budget: personalizationProfile.budget,
-              place_style: personalizationProfile.place_style,
-              food_focus: personalizationProfile.food_focus,
-              start_date: getTodayIsoDate(),
-            }),
-          });
-          const trip = await resTrip.json().catch(() => ({}));
-          if (!resTrip.ok) {
-          if (resTrip.status === 401 || resTrip.status === 403) {
-            const nextUrl = currentNextUrlWithAutosave();
-            savePendingTripDraft(nextUrl);
-            window.location.href = `/login?next=${encodeURIComponent(nextUrl)}`;
-            return;
-          }
+    const destination =
+      (document.getElementById('destinationInput').value || tripState.destination || '').trim() ||
+      'Destination';
 
-          console.error('SAVE TRIP FAILED:', resTrip.status, trip);
-          throw new Error(
-            typeof trip.detail === 'string'
-              ? trip.detail
-              : JSON.stringify(trip.detail || trip || 'Could not save trip.')
-          );
+    const title = getTripTitle() || generateDefaultTripTitle(destination);
+
+    if (!getTripTitle()) {
+      setTripTitle(title);
+    }
+
+    let trip = null;
+
+    // If this trip was opened from Account or already saved before,
+    // update the existing trip instead of creating a duplicate.
+    if (tripState.currentTripId) {
+      const resTrip = await fetch(`/trips/${tripState.currentTripId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          title,
+          days: tripState.days,
+          interests: getSelectedCategoryValues(),
+          group_type: personalizationProfile.group_type,
+          age_style: personalizationProfile.age_style || 'adult',
+          pace: personalizationProfile.pace,
+          budget: personalizationProfile.budget,
+          place_style: personalizationProfile.place_style,
+          food_focus: personalizationProfile.food_focus,
+          start_date: getTodayIsoDate(),
+          notes: tripState.notes || null,
+        }),
+      });
+
+      trip = await resTrip.json().catch(() => ({}));
+
+      if (!resTrip.ok) {
+        if (resTrip.status === 401 || resTrip.status === 403) {
+          const nextUrl = currentNextUrlWithAutosave();
+          savePendingTripDraft(nextUrl);
+          window.location.href = `/login?next=${encodeURIComponent(nextUrl)}`;
+          return;
         }
 
-          tripState.currentTripId = trip.id;
-          localStorage.setItem('tragent_last_trip_id', String(trip.id));
-          localStorage.setItem('tragent_last_trip_title', String(title || '').slice(0, 200));
-
-          for (const [dayStr, items] of Object.entries(tripState.itemsByDay)) {
-            const day = parseInt(dayStr);
-
-            for (const item of items) {
-              const photoUrl = await getFirstPhotoURLForSave(item);
-              const resItem = await fetch(`/trips/${trip.id}/items`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-                body: JSON.stringify({
-                  day,
-                  place_id: item.place_id,
-                  name: item.name,
-                  notes: item.notes || '',
-                  lat: item.lat,
-                  lng: item.lng,
-                  address: item.address,
-                  rating: item.rating,
-                  photo_url: item.photo_url || item.photoUrl || item.photo || '',
-                  arrival_time: item.arrival_time || null,
-                  departure_time: item.departure_time || null,
-                }),
-              });
-              const saved = await resItem.json().catch(() => ({}));
-              if (resItem.ok && saved.id) {
-                item.id = saved.id;
-                item.position = saved.position;
-              }
-            }
-          }
-
-          uiNotify('Saved', 'Trip saved!');
-          await loadAccountUi();
-
-          clearPendingTripDraft();
-
-          const url = new URL(window.location.href);
-          if (url.searchParams.get('autosave') === '1') {
-            url.searchParams.delete('autosave');
-            window.history.replaceState({}, '', url.toString());
-          }
-          /*
-          tripState.currentTripId = null;
-          for (let d = 1; d <= tripState.days; d++) tripState.itemsByDay[d] = [];
-          tripState.activeDay = 1;
-          */
-          renderDays();
-          renderItinerary();
-          renderResultsPage();
-        });
+        console.error('SAVE TRIP UPDATE FAILED:', resTrip.status, trip);
+        throw new Error(
+          typeof trip.detail === 'string'
+            ? trip.detail
+            : JSON.stringify(trip.detail || trip || 'Could not update trip.')
+        );
       }
+
+      // Delete old saved items so re-saving does not duplicate stops.
+      const oldItems = Object.values(tripState.itemsByDay || {})
+        .flat()
+        .filter((item) => item && item.id);
+
+      await Promise.allSettled(
+        oldItems.map((item) =>
+          fetch(`/trips/${tripState.currentTripId}/items/${item.id}`, {
+            method: 'DELETE',
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          })
+        )
+      );
+    } else {
+      // If this is a brand-new trip, create it.
+      const resTrip = await fetch('/trips', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          title,
+          destination,
+          days: tripState.days,
+          interests: getSelectedCategoryValues(),
+          group_type: personalizationProfile.group_type,
+          age_style: personalizationProfile.age_style || 'adult',
+          pace: personalizationProfile.pace,
+          budget: personalizationProfile.budget,
+          place_style: personalizationProfile.place_style,
+          food_focus: personalizationProfile.food_focus,
+          start_date: getTodayIsoDate(),
+          notes: tripState.notes || null,
+        }),
+      });
+
+      trip = await resTrip.json().catch(() => ({}));
+
+      if (!resTrip.ok) {
+        if (resTrip.status === 401 || resTrip.status === 403) {
+          const nextUrl = currentNextUrlWithAutosave();
+          savePendingTripDraft(nextUrl);
+          window.location.href = `/login?next=${encodeURIComponent(nextUrl)}`;
+          return;
+        }
+
+        console.error('SAVE TRIP FAILED:', resTrip.status, trip);
+        throw new Error(
+          typeof trip.detail === 'string'
+            ? trip.detail
+            : JSON.stringify(trip.detail || trip || 'Could not save trip.')
+        );
+      }
+
+      tripState.currentTripId = trip.id;
+    }
+
+    localStorage.setItem('tragent_last_trip_id', String(trip.id));
+    localStorage.setItem('tragent_last_trip_title', String(title || '').slice(0, 200));
+
+    // Save the current frontend itinerary items under the trip.
+    for (const [dayStr, items] of Object.entries(tripState.itemsByDay)) {
+      const day = parseInt(dayStr, 10);
+
+      for (const item of items) {
+        const photoUrl = await getFirstPhotoURLForSave(item);
+
+        const resItem = await fetch(`/trips/${trip.id}/items`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            day,
+            place_id: item.place_id,
+            name: item.name,
+            notes: item.notes || '',
+            category: item.category || null,
+            lat: item.lat,
+            lng: item.lng,
+            address: item.address,
+            rating: item.rating,
+            photo_url: photoUrl || item.photo_url || item.photoUrl || item.photo || '',
+            arrival_time: item.arrival_time || null,
+            departure_time: item.departure_time || null,
+          }),
+        });
+
+        const saved = await resItem.json().catch(() => ({}));
+
+        if (resItem.ok && saved.id) {
+          item.id = saved.id;
+          item.position = saved.position;
+        }
+      }
+    }
+
+    uiNotify('Saved', 'Trip saved!');
+    await loadAccountUi();
+
+    clearPendingTripDraft();
+
+    const url = new URL(window.location.href);
+
+    if (url.searchParams.get('autosave') === '1') {
+      url.searchParams.delete('autosave');
+      window.history.replaceState({}, '', url.toString());
+    }
+
+    renderDays();
+    renderItinerary();
+    renderResultsPage();
+  });
+}
 
         function escapeHtml(str) {
           return String(str)
