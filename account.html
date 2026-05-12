@@ -710,6 +710,53 @@
       setTimeout(bindTripFeedbackEvents, 0);
     }
 
+    function openTripFeedbackViewModal(trip) {
+      const rating = trip.trip_rating || 'Not rated';
+      const changedLabel =
+        trip.trip_changed_from_ai === true
+          ? 'Yes'
+          : trip.trip_changed_from_ai === false
+            ? 'No'
+            : 'Not answered';
+
+      const notes = (trip.trip_feedback_notes || '').trim();
+
+      openAccountModal({
+        title: `Feedback: ${trip.title || 'Trip'}`,
+        message: `
+          <div style="display:flex;flex-direction:column;gap:12px;">
+            <div>
+              <div style="font-weight:900;margin-bottom:4px;">Overall rating</div>
+              <div style="color:rgba(11,18,32,.75);">${escapeHtml(String(rating))}/5</div>
+            </div>
+
+            <div>
+              <div style="font-weight:900;margin-bottom:4px;">Changed from AI-generated trip?</div>
+              <div style="color:rgba(11,18,32,.75);">${escapeHtml(changedLabel)}</div>
+            </div>
+
+            <div>
+              <div style="font-weight:900;margin-bottom:4px;">AI reference notes</div>
+              <div style="color:rgba(11,18,32,.75);line-height:1.45;">
+                ${notes ? escapeHtml(notes) : 'No notes added.'}
+              </div>
+            </div>
+
+            <div style="font-size:12px;color:var(--muted);line-height:1.35;">
+              TrAgent will use these trip notes as a reference for future trips.
+            </div>
+          </div>
+        `,
+        actions: [
+          {
+            label: 'Close',
+            variant: 'primary',
+            onClick: () => closeAccountModal(),
+          },
+        ],
+      });
+    }
+
     function setFeedbackButtonStyle(btn, selected) {
       btn.style.background = selected
         ? 'linear-gradient(135deg,var(--orange),var(--orange2))'
@@ -797,6 +844,14 @@
     function getTripRatingLabel(t) {
       if (!t.trip_rating) return '';
       return `Rated ${t.trip_rating}/5`;
+    }
+
+    function tripHasFeedback(t) {
+      return !!(
+        t &&
+        t.trip_rating !== null &&
+        t.trip_rating !== undefined
+      );
     }
 
     function goPlanner() {
@@ -1929,7 +1984,7 @@
               <div class="tripThumbs" data-trip-thumbs="${escapeHtml(t.id)}"></div>
             </div>
             <button class="btn" type="button">Open</button>
-            <button class="btn" type="button">Rate</button>
+            <button class="btn" type="button">${tripHasFeedback(t) ? 'View Rating' : 'Rate'}</button>
             <button class="btn danger" type="button">Delete</button>
           `;
 
@@ -1949,7 +2004,11 @@
           });
 
           rateBtn.addEventListener('click', () => {
-            openTripFeedbackModal(t);
+            if (tripHasFeedback(t)) {
+              openTripFeedbackViewModal(t);
+            } else {
+              openTripFeedbackModal(t);
+            }
           });
 
           deleteBtn.addEventListener('click', async () => {
