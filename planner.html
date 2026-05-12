@@ -1601,6 +1601,24 @@
 
       appendTravelChatMessage('user', message);
 
+
+      if (isGenerateEntireTripRequest(message)) {
+        offerGenerateEntireTripFromChat(message);
+        return;
+      }
+
+      if (isRegenerateDayRequest(message)) {
+        offerRegenerateCurrentDayFromChat(message);
+        return;
+      }
+  
+      const addStopCategory = parseAddStopRequest(message);
+
+      if (addStopCategory) {
+        await offerAddStopFromChat(addStopCategory, message);
+        return;
+      }
+
       try {
         appendTravelChatMessage('ai', 'Thinking…');
 
@@ -1638,6 +1656,431 @@
         }
 
         appendTravelChatMessage('ai', 'Sorry, the trip assistant could not connect right now.');
+      }
+    }
+
+    function isRegenerateDayRequest(message) {
+      const text = String(message || '').toLowerCase().replace(/\s+/g, ' ').trim()
+
+      return (
+        text.includes('regenerate') ||
+        text.includes('generate day') ||
+        text.includes('plan day') ||
+        text.includes('create day') ||
+        text.includes('redo') ||
+        text.includes('remake') ||
+        text.includes('change this day') ||
+        text.includes('change day') ||
+        text.includes('make this day better') ||
+        text.includes('make it better') ||
+        text.includes('more relaxed') ||
+        text.includes('less packed') ||
+        text.includes('replace day')
+      );
+    }
+
+
+    function isGenerateEntireTripRequest(message) {
+      const text = String(message || '').toLowerCase().replace(/\s+/g, ' ').trim();
+
+      return (
+        text.includes('generate entire trip') ||
+        text.includes('generate full trip') ||
+        text.includes('generate my trip') ||
+        text.includes('help me generate my trip') ||
+        text.includes('help me plan') ||
+        text.includes('plan my trip') ||
+        text.includes('planning a trip') ||
+        text.includes('build my trip') ||
+        text.includes('make my trip') ||
+        text.includes('make a trip') ||
+        text.includes('create my trip') ||
+        text.includes('create full trip') ||
+        text.includes('plan full trip') ||
+        text.includes('plan entire trip') ||
+        text.includes('regenerate entire trip') ||
+        text.includes('regenerate full trip') ||
+        text.includes('redo entire trip') ||
+        text.includes('redo full trip') ||
+        text.includes('redo whole trip') ||
+        text.includes('make a new trip')
+      );
+    }
+
+
+    function offerGenerateEntireTripFromChat(message) {
+      appendTravelChatMessage(
+        'ai',
+        `I can regenerate the entire trip based on your current destination and profile.`
+      );
+
+      openUiModal({
+        title: 'Regenerate entire trip?',
+        message: `
+          This will replace the current itinerary for all days.
+          Your destination, profile, and selected interests will stay the same.
+        `,
+        actions: [
+          {
+            label: 'Cancel',
+            onClick: () => closeUiModal(),
+          },
+          {
+            label: 'Regenerate Trip',
+            variant: 'primary',
+            onClick: async () => {
+              closeUiModal();
+              await generateEntireTripFromChat(message);
+            },
+          },
+        ],
+      });
+    }
+
+
+
+    async function generateEntireTripFromChat(message = '') {
+      const destination =
+        (tripState.destination || document.getElementById('destinationInput')?.value || '').trim();
+
+      if (!destination) {
+        appendTravelChatMessage('ai', 'Add a destination first, then I can generate the full trip.');
+        return;
+      }
+
+      const interests = parseInterestsFromChatMessage(message);
+
+      if (interests.length) {
+        applyChatInterestsToPlanner(interests);
+
+        appendTravelChatMessage(
+          'ai',
+          `Got it — I’ll build the trip around: ${interests.join(', ')}.`
+        );
+      }
+
+      try {
+        await runAiGenerate();
+
+        appendTravelChatMessage(
+          'ai',
+          'Done — I generated the trip using your message as guidance. Review it and click Save Trip when you like it.'
+        );
+      } catch (err) {
+        appendTravelChatMessage(
+          'ai',
+          String(err.message || 'Sorry, I could not generate the full trip right now.')
+        );
+      }
+    }
+
+
+    function parseInterestsFromChatMessage(message) {
+      const text = String(message || '').toLowerCase();
+
+      const interestMap = [
+        { value: 'food', terms: ['food', 'restaurant', 'restaurants', 'lunch', 'dinner', 'brunch', 'tacos', 'pizza', 'bbq', 'barbecue', 'local food', 'local eats'] },
+        { value: 'coffee', terms: ['coffee', 'coffee shop', 'cafe', 'cafes', 'espresso'] },
+        { value: 'parks', terms: ['park', 'parks', 'garden', 'gardens'] },
+        { value: 'museums', terms: ['museum', 'museums', 'gallery', 'galleries', 'art'] },
+        { value: 'shopping', terms: ['shopping', 'shop', 'shops', 'store', 'stores', 'mall', 'market'] },
+        { value: 'history', terms: ['history', 'historic', 'landmark', 'landmarks'] },
+        { value: 'nightlife', terms: ['nightlife', 'bar', 'bars', 'club', 'clubs', 'brewery', 'live music'] },
+        { value: 'outdoors', terms: ['outdoor', 'outdoors', 'trail', 'trails', 'nature', 'scenic'] },
+      ];
+
+      const found = [];
+
+      interestMap.forEach((item) => {
+        if (item.terms.some((term) => text.includes(term))) {
+          found.push(item.value);
+        }
+      });
+
+      return [...new Set(found)];
+    }
+
+
+    function applyChatInterestsToPlanner(interests) {
+      if (!Array.isArray(interests) || !interests.length) return;
+
+      selectedCategories.clear();
+
+      interests.forEach((interest) => {
+        const category = getCategoryByValue(interest);
+
+        if (category) {
+          addCategoryPill(category, false);
+        }
+      });
+
+      renderSelectedCategoryPills();
+    }
+
+
+    function parseAddStopRequest(message) {
+      const text = String(message || '').toLowerCase();
+
+      const wantsAdd =
+        text.includes('add ') ||
+        text.includes('include ') ||
+        text.includes('put ') ||
+        text.includes('find me ') ||
+        text.includes('recommend ') ||
+        text.includes('suggest ');
+
+      if (!wantsAdd) return null;
+
+      const categoryMap = [
+        { key: 'coffee', terms: ['coffee', 'coffee shop', 'cafe', 'espresso'] },
+        { key: 'food', terms: ['food', 'restaurant', 'restaurants', 'lunch', 'dinner', 'brunch', 'tacos'] },
+        { key: 'parks', terms: ['park', 'parks', 'outdoor', 'outdoors', 'nature', 'trail'] },
+        { key: 'museums', terms: ['museum', 'museums', 'gallery', 'art'] },
+        { key: 'shopping', terms: ['shopping', 'shop', 'store', 'mall', 'market'] },
+        { key: 'history', terms: ['history', 'historic', 'landmark'] },
+        { key: 'nightlife', terms: ['bar', 'bars', 'nightlife', 'club', 'brewery'] },
+      ];
+
+      for (const item of categoryMap) {
+        if (item.terms.some((term) => text.includes(term))) {
+          return item.key;
+        }
+      }
+
+      if (
+        text.includes('add a stop') ||
+        text.includes('add stop') ||
+        text.includes('add something') ||
+        text.includes('add a place') ||
+        text.includes('add place')
+      ) {
+        return 'food';
+      }
+
+      return null;
+    }
+
+    function parseTargetDayFromMessage(message) {
+      const text = String(message || '').toLowerCase();
+
+      const match = text.match(/\bday\s*(\d+)\b/);
+      if (!match) return tripState.activeDay || 1;
+
+      const day = Number(match[1]);
+
+      if (!Number.isFinite(day) || day < 1 || day > tripState.days) {
+        return tripState.activeDay || 1;
+      }
+
+      return day;
+    }
+
+
+    async function findChatRecommendedStop(category) {
+      const destination =
+        (tripState.destination || document.getElementById('destinationInput')?.value || '').trim();
+
+      if (!destination) {
+        throw new Error('Add a destination first, then I can recommend a stop.');
+      }
+
+      const query = `${category} in ${destination}`;
+
+      const res = await fetch(`/places/search?q=${encodeURIComponent(query)}`);
+
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        throw new Error(data.detail || 'Could not search for a stop.');
+      }
+
+      const results = Array.isArray(data.results) ? data.results : [];
+
+      const usedPlaceIds = new Set();
+
+      Object.values(tripState.itemsByDay || {}).forEach((items) => {
+        (items || []).forEach((item) => {
+          if (item.place_id) usedPlaceIds.add(item.place_id);
+        });
+      });
+
+      const match = results.find((place) => {
+        return place && place.place_id && !usedPlaceIds.has(place.place_id);
+      });
+
+      if (!match) {
+        throw new Error(`I could not find a new ${category} stop that is not already in your trip.`);
+      }
+
+      return {
+        place_id: match.place_id,
+        name: match.name,
+        address: match.address || '',
+        rating: match.rating || null,
+        lat: match.lat || null,
+        lng: match.lng || null,
+        photo_url: match.photo_url || '',
+      };
+    }
+
+
+    async function offerAddStopFromChat(category, message = '') {
+      const day = parseTargetDayFromMessage(message);
+
+      try {
+        await withAiLoading(`Finding a ${category} stop…`, async () => {
+          const place = await findChatRecommendedStop(category);
+
+          appendTravelChatMessage(
+            'ai',
+            `I found ${place.name}. I can add it to Day ${day}.`
+          );
+
+          openUiModal({
+            title: `Add to Day ${day}?`,
+            message: `
+              <div style="line-height:1.45;">
+                <strong>${escapeHtml(place.name)}</strong><br>
+                ${escapeHtml(place.address || 'No address available')}
+              </div>
+            `,
+            actions: [
+              {
+                label: 'Cancel',
+                onClick: () => closeUiModal(),
+              },
+              {
+                label: 'Add Stop',
+                variant: 'primary',
+                onClick: () => {
+                  closeUiModal();
+
+                  const previousDay = tripState.activeDay;
+                  tripState.activeDay = day;
+
+                  renderDays();
+                  addToTrip(place);
+
+                  tripState.activeDay = day;
+                  renderDays();
+                  renderItinerary();
+                  renderResultsPage();
+
+                  appendTravelChatMessage(
+                    'ai',
+                    `Done — I added ${place.name} to Day ${day}. Click Save Trip when you like the changes.`
+                  );
+                },
+              },
+            ],
+          });
+        });
+      } catch (err) {
+        appendTravelChatMessage(
+          'ai',
+          String(err.message || 'Sorry, I could not find a stop to add right now.')
+        );
+      }
+    }
+
+
+    function offerRegenerateCurrentDayFromChat(message) {
+      const day = parseTargetDayFromMessage(message);
+
+      appendTravelChatMessage(
+        'ai',
+        `I can regenerate Day ${day} based on your current destination and profile.`
+      );
+
+      openUiModal({
+        title: `Regenerate Day ${day}?`,
+        message: `
+          This will replace the stops currently planned for Day ${day}.
+          Other days will stay the same.
+        `,
+        actions: [
+          {
+            label: 'Cancel',
+            onClick: () => closeUiModal(),
+          },
+          {
+            label: `Regenerate Day ${day}`,
+            variant: 'primary',
+            onClick: async () => {
+              closeUiModal();
+              await regenerateCurrentDayFromChat(message);
+            },
+          },
+        ],
+      });
+    }
+
+
+
+    async function regenerateCurrentDayFromChat(reasonText = '') {
+      const day = parseTargetDayFromMessage(reasonText);
+      const destination =
+        (tripState.destination || document.getElementById('destinationInput')?.value || '').trim();
+
+      if (!destination) {
+        appendTravelChatMessage('ai', 'Add a destination first, then I can regenerate the day.');
+        return;
+      }
+
+      const interests = getSelectedCategoryValues && getSelectedCategoryValues().length
+        ? getSelectedCategoryValues()
+        : ['coffee', 'museums', 'parks', 'shopping', 'food'];
+
+      const token = getToken();
+      const headers = { 'Content-Type': 'application/json' };
+
+      if (token) {
+        headers.Authorization = `Bearer ${token}`;
+      }
+
+      try {
+        await withAiLoading(`Regenerating Day ${day}…`, async () => {
+          const res = await fetch('/ai/itinerary', {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({
+              destination,
+              days: tripState.days,
+              interests,
+              profile: personalizationProfile,
+              start_date: getTodayIsoDate(),
+              template_description: reasonText || null,
+            }),
+          });
+
+          const data = await res.json().catch(() => ({}));
+
+          if (!res.ok) {
+            throw new Error(data.detail || 'Could not regenerate the day.');
+          }
+
+          const merged = mergeAiItineraryWithExistingStops(data.itinerary || [], {
+            mode: 'regenerate_current_day',
+            targetDay: day,
+          });
+
+          tripState.itemsByDay = merged.nextItemsByDay;
+          tripState.activeDay = day;
+
+          renderDays();
+          renderItinerary();
+          renderResultsPage();
+
+          appendTravelChatMessage(
+            'ai',
+            `Done — I regenerated Day ${day}. Review it and click Save Trip when you like it.`
+          );
+        });
+      } catch (err) {
+        appendTravelChatMessage(
+          'ai',
+          String(err.message || 'Sorry, I could not regenerate that day right now.')
+        );
       }
     }
 
@@ -4882,7 +5325,7 @@ if (travelChatInput) {
   });
 }
 
-/* TEMP PAUSE TO SAVE CREDITS OPEN LATER
+
 if (destParam) {
   preloadCategoryPillsFromInterests(interestsParam);
 
@@ -4894,25 +5337,7 @@ if (destParam) {
   document.getElementById('q').value = qParam;
   runSearch();
 }
- CREDIT SAVER BELOW THIS COMMENT */
-if (destParam) {
-  preloadCategoryPillsFromInterests(interestsParam);
 
-  if (qParam) {
-    document.getElementById('q').value = qParam;
-  }
-
-  // TEMP CREDIT SAVER:
-  // Do not auto-run search when planner loads.
-  // Press Search manually when real results are needed.
-  // runSearch();
-
-} else if (qParam) {
-  document.getElementById('q').value = qParam;
-
-  // TEMP CREDIT SAVER:
-  // runSearch();
-}
 
 if (startParam) {
   const startInput = document.getElementById('startLocationInput');
