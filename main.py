@@ -48,14 +48,14 @@ app = FastAPI(title="Travel Agent API")
 
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 
-
+'''
 #TEMP CREDIT SAVER CACHE
 PLACES_SEARCH_CACHE = {}
 PLACES_SEARCH_CACHE_TTL_SECONDS = 60 * 60  # 1 hour
 
 PLACE_DETAILS_CACHE = {}
 PLACE_DETAILS_CACHE_TTL_SECONDS = 60 * 60 * 24  # 24 hours
-
+'''
 @app.exception_handler(OperationalError)
 def sqlalchemy_operational_error_handler(request, exc):
     return JSONResponse(
@@ -1061,15 +1061,16 @@ async def places_search(
     radius: int = 30000,
 ):
 
-    cache_key = f"{q}|{lat}|{lng}|{radius}"
-    cached = PLACES_SEARCH_CACHE.get(cache_key)
+    '''
+        cache_key = f"{q}|{lat}|{lng}|{radius}"
+        cached = PLACES_SEARCH_CACHE.get(cache_key)
 
-    if cached:
-        cached_at, cached_data = cached
-        if time.time() - cached_at < PLACES_SEARCH_CACHE_TTL_SECONDS:
-            print("Places search cache hit:", cache_key)
-            return cached_data
-
+        if cached:
+            cached_at, cached_data = cached
+            if time.time() - cached_at < PLACES_SEARCH_CACHE_TTL_SECONDS:
+                print("Places search cache hit:", cache_key)
+                return cached_data
+    '''
     api_key = os.getenv("GOOGLE_MAPS_API_KEY")
     if not api_key:
         raise HTTPException(status_code=500, detail="GOOGLE_MAPS_API_KEY is not set")
@@ -1204,12 +1205,17 @@ async def places_autocomplete(
         r.raise_for_status()
         data= r.json()
     status = data.get('status')
+    if r.status_code != 200:
+        print("Google Places status:", r.status_code)
+        print("Google Places response:", r.text)
+        raise HTTPException(status_code=502, detail=r.text)
+    '''TEMP BLOCK OFF TO TEST API KEY
     if status not in ('OK', "ZERO_RESULTS"):
         raise HTTPException(
             status_code=502,
             detail={"google_status": status, 'error': data.get('error_message')},
         )
-        
+        '''
     predictions = []
     for p in data.get('predictions',[]):
         predictions.append({
@@ -1222,6 +1228,7 @@ async def places_autocomplete(
 
 @app.get('/places/details/{place_id}')
 async def place_details(place_id:str):
+    '''
     #TEMP CREDIT SAVER CACHE
     cached = PLACE_DETAILS_CACHE.get(place_id)
 
@@ -1230,6 +1237,7 @@ async def place_details(place_id:str):
         if time.time() - cached_at < PLACE_DETAILS_CACHE_TTL_SECONDS:
             print("Place details cache hit:", place_id)
             return cached_data
+            '''
     ###^       
     api_key = os.getenv("GOOGLE_MAPS_API_KEY")
 
@@ -1309,7 +1317,7 @@ async def place_details(place_id:str):
         "photos": photos,
     }
 
-    PLACE_DETAILS_CACHE[place_id] = (time.time(), response_data)
+    #PLACE_DETAILS_CACHE[place_id] = (time.time(), response_data)
 
     return response_data
 
@@ -2717,7 +2725,7 @@ async def ai_itinerary(
         
         results = await search_places_for_interests(body.destination, interest, profile)
        # TEMP FOR CREDIT SAVER RETURN LATER results = results[:5]
-        results = results[:10]
+        results = results[:12]
 
         scored = []
         
@@ -2866,6 +2874,13 @@ async def ai_travel_chat(payload: TravelChatRequest):
     You are the AI Trip Assistant inside a travel planning app called trAgent.
 
     Your job is to give short, easy-to-read travel advice based on the user's current trip.
+
+
+    Scope rules:
+    - Only answer questions related to travel planning, itineraries, destinations, routes, saved trips, trip feedback, and using trAgent.
+    - If the user asks about unrelated topics such as math, recipes, coding, homework, entertainment, or general knowledge, politely refuse and redirect back to travel planning.
+    - Do not solve unrelated questions, even if they are simple.
+    - Keep the refusal short and helpful.
 
     Style rules:
     - Keep responses brief.
