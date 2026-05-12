@@ -3431,9 +3431,16 @@
         await withAiLoading('Generating itinerary…', async () => {
           console.log('ABOUT TO CALL /ai/itinerary');
 
+          const token = getToken();
+          const headers = { 'Content-Type': 'application/json' };
+
+          if (token) {
+            headers.Authorization = `Bearer ${token}`;
+}
+
           const res = await fetch('/ai/itinerary', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers,
             body: JSON.stringify({
               destination: destination,
               days: tripState.days,

@@ -418,6 +418,47 @@ def _parse_bearer(authorization: str | None) -> str | None:
     return token
 
 
+
+def build_user_feedback_summary(db: Session, user_id: int, limit: int = 5) -> str:
+    trips = (
+        db.query(models.Trip)
+        .filter(
+            models.Trip.user_id == user_id,
+            models.Trip.trip_rating.isnot(None),
+        )
+        .order_by(models.Trip.id.desc())
+        .limit(limit)
+        .all()
+    )
+
+    if not trips:
+        return ""
+
+    lines = []
+
+    for trip in trips:
+        parts = []
+
+        destination = trip.destination or "Unknown destination"
+        rating = trip.trip_rating
+        changed = (
+            "yes" if trip.trip_changed_from_ai == 1
+            else "no" if trip.trip_changed_from_ai == 0
+            else "unknown"
+        )
+        notes = (trip.trip_feedback_notes or "").strip()
+
+        parts.append(f"- {destination}: rated {rating}/5")
+        parts.append(f"changed AI trip: {changed}")
+
+        if notes:
+            parts.append(f"notes: {notes[:500]}")
+
+        lines.append("; ".join(parts))
+
+    return "\n".join(lines)
+
+
 def get_current_user(
     db: db_dependency,
     authorization: str | None = Header(default=None),
@@ -438,6 +479,31 @@ def get_current_user(
     user = db.get(models.User, session.user_id)
     if not user:
         raise HTTPException(status_code=401, detail="Invalid session")
+    return user
+
+
+def get_optional_current_user(
+    db: db_dependency,
+    authorization: str | None = Header(default=None),
+) -> Optional[models.User]:
+    token = _parse_bearer(authorization)
+
+    if not token:
+        return None
+
+    now = datetime.now(timezone.utc)
+
+    session = (
+        db.query(models.SessionToken)
+        .filter(models.SessionToken.token == token)
+        .first()
+    )
+
+    if not session or session.expires_at <= now:
+        return None
+
+    user = db.get(models.User, session.user_id)
+
     return user
 
 
@@ -1659,6 +1725,67 @@ def score_place_for_profile(place: dict, profile: Optional[TripProfile] = None, 
 
     return score
 
+def score_place_with_feedback(place: dict, base_score: float, feedback_summary: str) -> float:
+    if not feedback_summary:
+        return base_score
+
+    feedback = feedback_summary.lower()
+
+    name = (place.get("name") or "").lower()
+    address = (place.get("address") or "").lower()
+    category = (place.get("_interest") or "").lower()
+    text_blob = f"{name} {address} {category}"
+
+    score = base_score
+
+    # Positive preference signals from user's previous feedback
+    positive_keywords = [
+        "liked", "loved", "great", "favorite", "enjoyed",
+        "scenic", "outdoor", "coffee", "relaxed", "local", "museum",
+        "park", "family", "budget", "walk"
+    ]
+
+    # Negative preference signals from user's previous feedback
+    category_keywords = {
+        "coffee": ["coffee", "coffee shop", "cafe", "espresso"],
+        "nightlife": ["bar", "bars", "nightlife", "club", "brewery"],
+        "food": ["food", "restaurant", "restaurants"],
+        "parks": ["park", "parks", "outdoor", "scenic"],
+        "museums": ["museum", "museums"],
+        "shopping": ["shopping", "shop", "store", "mall"],
+        "history": ["history", "historic"],
+    }
+
+    negative_patterns = [
+        "did not like",
+        "didn't like",
+        "not the",
+        "not my vibe",
+        "avoid",
+        "too many",
+        "too much",
+        "boring",
+        "expensive",
+        "crowded",
+    ]
+
+    for word in positive_keywords:
+        if word in feedback and word in text_blob:
+            score += 8
+
+    for interest, words in category_keywords.items():
+        place_matches_category = interest == category or any(word in text_blob for word in words)
+        feedback_mentions_category = any(word in feedback for word in words)
+        feedback_is_negative = any(pattern in feedback for pattern in negative_patterns)
+
+        if place_matches_category and feedback_mentions_category:
+            if feedback_is_negative:
+                score -= 15
+            elif any(word in feedback for word in ["liked", "loved", "favorite", "enjoyed", "great"]):
+                score += 8
+
+    return score
+
 def rank_places_for_profile(
     places: list[dict],
     profile: Optional[TripProfile] = None, 
@@ -2513,10 +2640,42 @@ async def fetch_google_drive_route(
     }
 
 @app.post("/ai/itinerary", response_model=AIItineraryResponse)
-async def ai_itinerary(body: ItineraryRequest):
+async def ai_itinerary(
+    body: ItineraryRequest,
+    db: db_dependency, 
+    user: Optional[models.User] = Depends(get_optional_current_user),
+    ):
     started = time.perf_counter()
 
     profile = body.profile or TripProfile()
+
+
+    feedback_summary = ""
+
+    if user:
+        print('AI user found:', user.id, user.email)
+        feedback_summary = build_user_feedback_summary(db, user.id)
+    else:
+        print("AI user found: none")
+
+    if feedback_summary:
+        print("AI feedback summary:", feedback_summary)
+    else:
+        print("AI feedback summary: none found")
+
+    feedback_instructions = ""
+
+    if feedback_summary:
+        feedback_instructions = f"""
+    User's previous trip feedback:
+    {feedback_summary}
+
+    Use this feedback as soft preference guidance.
+    Prefer patterns from highly rated trips.
+    Avoid repeating things the user criticized.
+    Do not overreact to one rating.
+    Do not mention this feedback directly to the user.
+    """
 
     default_interests_by_group = {
         "solo": ["coffee", "museums", "parks", "history", "shopping", "food"],
@@ -2571,12 +2730,22 @@ async def ai_itinerary(body: ItineraryRequest):
         for place, details in zip(results, detail_results):
             if isinstance(details, dict) and details:
                 place.update(details)
+
             place["_interest"] = interest
-            place["_score"] = score_place(place,interest,profile)
+
+            base_score = score_place(place, interest, profile)
+
+            place["_score"] = score_place_with_feedback(
+                place=place,
+                base_score=base_score,
+                feedback_summary=feedback_summary,
+            )
+
             scored.append(place)
 
         seen = set()
         ranked = []
+
         for place in sorted(scored, key=lambda p: p["_score"], reverse=True):
             pid = place.get("place_id")
             if not pid or pid in seen:
@@ -2835,22 +3004,3 @@ def is_place_open_for_time(place: dict, day_index: int, arrival_hhmm: str, depar
     return False
         
 
-"""
-#AI assistant
-@app.post("/ai/itinerary")
-async def ai_itinerary(body: ItineraryRequest):
-    itinerary = []
-    for d in range(1, body.days + 1):
-        itinerary.append({
-            "day": d,
-            "theme": " / ".join(body.interests) if body.interests else "General",
-            "plan": [
-                {"time": "09:00", "activity": f"Explore top sights in {body.destination}"},
-                {"time": "13:00", "activity": "Lunch at a popular spot"},
-                {"time": "15:00", "activity": "Something aligned with interests"},
-                {"time": "19:00", "activity": "Dinner + evening walk"},
-            ],
-        })
-    return {"destination": body.destination, "days": body.days, "itinerary": itinerary, "note": "AI stub"}
-'''
-"""
