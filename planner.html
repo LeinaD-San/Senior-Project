@@ -1759,6 +1759,139 @@ async function applyStartLocationChange() {
 
       messages.appendChild(bubble);
       messages.scrollTop = messages.scrollHeight;
+
+      window.travelChatHistory = window.travelChatHistory || [];
+      window.travelChatHistory.push({
+        role: role === 'user' ? 'user' : 'assistant',
+        content: String(message || ''),
+      });
+      window.travelChatHistory = window.travelChatHistory.slice(-12);
+
+      if (role !== 'user') {
+        updateLastTravelChatRecommendations(String(message || ''));
+      }
+    }
+
+    function updateLastTravelChatRecommendations(message) {
+      const text = String(message || '');
+
+      if (/\btell me\b|\bsay if\b|\bmention\b|\bjust need\b/i.test(text)) {
+        return;
+      }
+
+      const match = text.match(/\bday\s*(\d+)\b/i);
+      const day = match ? Number(match[1]) : (tripState.activeDay || 1);
+
+      const lines = text.split(/\r?\n/);
+      const items = [];
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+
+        const m = trimmed.match(/^(?:[-•]|\d+\.)\s*(.+)$/);
+        if (!m) continue;
+
+        const body = m[1].trim();
+        if (!body) continue;
+
+        if (/^(tell me|say if|mention|reply|send|paste)\b/i.test(body)) {
+          continue;
+        }
+
+        const parts = body.split(/\s+[—-]\s+/);
+        const name = (parts[0] || '').trim();
+        const description = (parts.slice(1).join(' - ') || '').trim();
+        if (!name) continue;
+
+        items.push({ name, description });
+      }
+
+      if (items.length < 2) return;
+
+      window.travelChatLastRecommendations = {
+        day: Number.isFinite(day) ? day : (tripState.activeDay || 1),
+        destination: (tripState.destination || document.getElementById('destinationInput')?.value || '').trim(),
+        items: items.slice(0, 6),
+      };
+    }
+
+    function isApplyLastRecommendationsRequest(message) {
+      const text = String(message || '').toLowerCase().replace(/\s+/g, ' ').trim();
+      const hasVerb = /\b(add|put|input|place|insert|apply)\b/.test(text);
+      const hasObject = /\b(that|these|those|recommendations|picks|ideas|all|them|it)\b/.test(text);
+      return hasVerb && hasObject;
+    }
+
+    async function findPlaceByNameForChat(name, destination) {
+      const query = `${name} ${destination}`.trim();
+      const res = await fetch(`/places/search?q=${encodeURIComponent(query)}`);
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        throw new Error(data.detail || 'Could not search for that place.');
+      }
+
+      const results = Array.isArray(data.results) ? data.results : [];
+      return results.find((x) => x && x.place_id) || null;
+    }
+
+    async function applyLastTravelChatRecommendationsToDay(day) {
+      const payload = window.travelChatLastRecommendations;
+      if (!payload || !Array.isArray(payload.items) || !payload.items.length) {
+        appendTravelChatMessage('ai', `I don’t have a recent recommendation list to add. Ask me for Day ${day} ideas first.`);
+        return;
+      }
+
+      const destination = (payload.destination || tripState.destination || '').trim();
+      if (!destination) {
+        appendTravelChatMessage('ai', 'Add a destination first, then I can insert the recommendations.');
+        return;
+      }
+
+      const usedPlaceIds = new Set();
+      Object.values(tripState.itemsByDay || {}).forEach((items) => {
+        (items || []).forEach((item) => {
+          if (item.place_id) usedPlaceIds.add(item.place_id);
+        });
+      });
+
+      tripState.itemsByDay[day] = [];
+
+      const added = [];
+      for (const item of payload.items) {
+        try {
+          const found = await findPlaceByNameForChat(item.name, destination);
+          if (!found) continue;
+          if (usedPlaceIds.has(found.place_id)) continue;
+          usedPlaceIds.add(found.place_id);
+
+          tripState.itemsByDay[day].push({
+            place_id: found.place_id,
+            name: found.name || item.name,
+            address: '',
+            rating: found.rating || null,
+            lat: found.geometry?.location?.lat ?? found.lat ?? null,
+            lng: found.geometry?.location?.lng ?? found.lng ?? null,
+            notes: item.description || '',
+          });
+          added.push(found.name || item.name);
+        } catch {
+          continue;
+        }
+      }
+
+      tripState.activeDay = day;
+      renderDays();
+      renderItinerary();
+      renderResultsPage();
+
+      if (!added.length) {
+        appendTravelChatMessage('ai', `I tried to add those, but couldn’t find good matches for Day ${day}. Try asking with 1–2 specific place names.`);
+        return;
+      }
+
+      appendTravelChatMessage('ai', `Done — I added the recommendations to Day ${day}. Click Save Trip when you like it.`);
     }
 
     function buildTravelChatContext() {
@@ -1817,6 +1950,159 @@ async function applyStartLocationChange() {
           text.includes('another stop?') 
 
         );
+      }
+
+      function isDayRecommendationsRequest(message) {
+        const text = String(message || '').toLowerCase().replace(/\s+/g, ' ').trim();
+        return (
+          (text.includes('recommend') || text.includes('recommendations') || text.includes('ideas')) &&
+          (text.includes('day ') || /\bday\s*\d+\b/.test(text) || text.includes('today'))
+        );
+      }
+
+      async function suggestRealPlacesForDayFromChat(message) {
+        const day = parseTargetDayFromMessage(message);
+        const destination =
+          (tripState.destination || document.getElementById('destinationInput')?.value || '').trim();
+
+        if (!destination) {
+          appendTravelChatMessage('ai', 'Add a destination first, then I can recommend real places.');
+          return;
+        }
+
+        const queries = [
+          { q: `top attractions in ${destination}`, reason: 'top-rated local highlight; good first stop' },
+          { q: `coffee in ${destination}`, reason: 'easy morning start; quick recharge' },
+          { q: `lunch in ${destination}`, reason: 'solid midday meal; keeps the day moving' },
+          { q: `sunset spot in ${destination}`, reason: 'great views; perfect evening wind-down' },
+        ];
+
+        appendTravelChatMessage('ai', 'Finding a few real places…');
+
+        const recommendations = [];
+        function formatPlaceType(place) {
+          const t = Array.isArray(place?.types) ? place.types : [];
+          const primary = t.find((x) => x && !x.includes('point_of_interest')) || t[0];
+          return String(primary || 'place').replaceAll('_', ' ');
+        }
+
+        function isLikelyStreetName(name) {
+          const n = String(name || '').trim();
+          if (!n) return false;
+          return /\b(dr|drive|rd|road|st|street|ave|avenue|blvd|boulevard|ln|lane|hwy|highway|pkwy|parkway)\b\.?$/i.test(n);
+        }
+
+        function isAllowedRecommendationPlace(place) {
+          const t = Array.isArray(place?.types) ? place.types : [];
+          const deny = new Set([
+            'route',
+            'street_address',
+            'intersection',
+            'premise',
+            'subpremise',
+            'neighborhood',
+            'political',
+            'locality',
+            'postal_code',
+            'country',
+            'administrative_area_level_1',
+            'administrative_area_level_2',
+          ]);
+
+          if (t.some((x) => deny.has(x))) return false;
+
+          const allow = new Set([
+            'tourist_attraction',
+            'natural_feature',
+            'park',
+            'restaurant',
+            'cafe',
+            'museum',
+            'bar',
+            'aquarium',
+            'zoo',
+            'art_gallery',
+            'shopping_mall',
+            'amusement_park',
+            'establishment',
+            'point_of_interest',
+            'food',
+            'store',
+          ]);
+
+          return t.some((x) => allow.has(x));
+        }
+
+        function isNotDeniedPlace(place) {
+          const t = Array.isArray(place?.types) ? place.types : [];
+          const deny = new Set([
+            'route',
+            'street_address',
+            'intersection',
+            'premise',
+            'subpremise',
+            'neighborhood',
+            'political',
+            'locality',
+            'postal_code',
+            'country',
+            'administrative_area_level_1',
+            'administrative_area_level_2',
+          ]);
+
+          return !t.some((x) => deny.has(x));
+        }
+
+        for (const entry of queries) {
+          if (recommendations.length >= 5) break;
+          try {
+            const res = await fetch(`/places/search?q=${encodeURIComponent(entry.q)}`);
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) continue;
+
+            const results = Array.isArray(data.results) ? data.results : [];
+            const pick =
+              results.find((p) => p && p.place_id && p.name && isAllowedRecommendationPlace(p)) ||
+              results.find((p) => p && p.place_id && p.name && isNotDeniedPlace(p));
+            if (!pick) continue;
+
+            if (isLikelyStreetName(pick.name)) {
+              continue;
+            }
+
+            const placeType = formatPlaceType(pick);
+            recommendations.push({
+              name: pick.name,
+              description: `${placeType}; ${entry.reason}`,
+            });
+          } catch {
+            continue;
+          }
+        }
+
+        const messages = document.getElementById('travelChatMessages');
+        const thinkingBubble = messages?.lastElementChild;
+        if (thinkingBubble && thinkingBubble.textContent === 'Finding a few real places…') {
+          thinkingBubble.remove();
+        }
+
+        if (recommendations.length < 2) {
+          appendTravelChatMessage('ai', `I couldn’t find enough matches right now. Try a different destination or a more specific request for Day ${day}.`);
+          return;
+        }
+
+        window.travelChatLastRecommendations = {
+          day,
+          destination,
+          items: recommendations,
+        };
+
+        const bullets = recommendations
+          .slice(0, 5)
+          .map((r) => `- ${r.name}${r.description ? ` — ${r.description}` : ''}`)
+          .join('\n');
+
+        appendTravelChatMessage('ai', `Here are a few real Day ${day} picks in ${destination}:\n\n${bullets}`);
       }
 
       function pickSuggestionCategoryForTrip(day) {
@@ -1905,6 +2191,12 @@ async function applyStartLocationChange() {
 
         appendTravelChatMessage('user', message);
 
+        if (isApplyLastRecommendationsRequest(message)) {
+          const day = parseTargetDayFromMessage(message);
+          await applyLastTravelChatRecommendationsToDay(day);
+          return;
+        }
+
         if (isGenerateEntireTripRequest(message)) {
           offerGenerateEntireTripFromChat(message);
           return;
@@ -1912,6 +2204,11 @@ async function applyStartLocationChange() {
 
         if (isRegenerateDayRequest(message)) {
           offerRegenerateCurrentDayFromChat(message);
+          return;
+        }
+
+        if (isDayRecommendationsRequest(message)) {
+          await suggestRealPlacesForDayFromChat(message);
           return;
         }
 
@@ -1936,7 +2233,7 @@ async function applyStartLocationChange() {
             body: JSON.stringify({
               message,
               context: buildTravelChatContext(),
-              history: [],
+              history: (window.travelChatHistory || []).slice(-10),
             }),
           });
 
@@ -1984,6 +2281,7 @@ async function applyStartLocationChange() {
         text.includes('more relaxed') ||
         text.includes('less packed') ||
         text.includes('replace day')
+
       );
     }
 
@@ -2159,7 +2457,9 @@ async function applyStartLocationChange() {
         text.includes('add stop') ||
         text.includes('add something') ||
         text.includes('add a place') ||
-        text.includes('add place')
+        text.includes('add place') ||
+        text.includes('ok something is missing can you add another stop to ')
+
       ) {
         return 'food';
       }
@@ -2168,12 +2468,36 @@ async function applyStartLocationChange() {
     }
 
     function parseTargetDayFromMessage(message) {
-      const text = String(message || '').toLowerCase();
+      const text = String(message || '').toLowerCase().replace(/\s+/g, ' ').trim();
 
       const match = text.match(/\bday\s*(\d+)\b/);
-      if (!match) return tripState.activeDay || 1;
+      let day = match ? Number(match[1]) : NaN;
 
-      const day = Number(match[1]);
+      if (!Number.isFinite(day)) {
+        const wordMatch = text.match(/\bday\s*(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen)\b/);
+        const map = {
+          one: 1,
+          two: 2,
+          three: 3,
+          four: 4,
+          five: 5,
+          six: 6,
+          seven: 7,
+          eight: 8,
+          nine: 9,
+          ten: 10,
+          eleven: 11,
+          twelve: 12,
+          thirteen: 13,
+          fourteen: 14,
+        };
+
+        if (wordMatch) {
+          day = map[wordMatch[1]];
+        }
+      }
+
+      if (!Number.isFinite(day)) return tripState.activeDay || 1;
 
       if (!Number.isFinite(day) || day < 1 || day > tripState.days) {
         return tripState.activeDay || 1;
