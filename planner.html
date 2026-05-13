@@ -1549,11 +1549,8 @@ async function applyStartLocationChange() {
 
     return;
   }
-  if (isLikelyInvalidStartLocation(value)) {
-    tripState.startLocation = '';
-    tripState.startLat = null;
-    tripState.startLng = null;
 
+  if (isLikelyInvalidStartLocation(value)) {
     if (status) {
       status.textContent = 'Enter a real starting location, like a hotel, airport, address, or known place.';
       status.style.color = '#b91c1c';
@@ -1562,43 +1559,32 @@ async function applyStartLocationChange() {
     return;
   }
 
-    if (status) {
-      status.textContent = 'Checking starting location…';
-      status.style.color = 'rgba(11,18,32,.55)';
-    }
-
-    const geo = await geocodeStartLocation(value);
-
-    const hasCoordinates =
-      Number.isFinite(Number(geo?.lat)) &&
-      Number.isFinite(Number(geo?.lng));
-
-    if (!geo || !hasCoordinates) {
-      tripState.startLocation = '';
-      tripState.startLat = null;
-      tripState.startLng = null;
-
-      if (status) {
-        status.textContent = 'Could not verify that starting location. Try a hotel, airport, address, or known place.';
-        status.style.color = '#b91c1c';
-      }
-
-      return;
-    }
-
-    tripState.startLocation = geo.formatted_address || geo.label || value;
-    tripState.startLat = Number(geo.lat);
-    tripState.startLng = Number(geo.lng);
-
-    if (input) input.value = tripState.startLocation;
-
-    if (status) {
-      status.textContent = 'Starting location set and ready for route optimization.';
-      status.style.color = 'rgba(11,18,32,.55)';
-    }
+  if (status) {
+    status.textContent = 'Checking starting location…';
+    status.style.color = 'rgba(11,18,32,.55)';
   }
 
+  const geo = await geocodeStartLocation(value);
 
+  const hasCoordinates =
+    Number.isFinite(Number(geo?.lat)) &&
+    Number.isFinite(Number(geo?.lng));
+
+  // Accept the typed address as a route label even if coordinates are unavailable.
+  // Google Maps can still use the label when opening directions.
+  tripState.startLocation = geo?.formatted_address || geo?.label || value;
+  tripState.startLat = hasCoordinates ? Number(geo.lat) : null;
+  tripState.startLng = hasCoordinates ? Number(geo.lng) : null;
+
+  if (input) input.value = tripState.startLocation;
+
+  if (status) {
+    status.textContent = hasCoordinates
+      ? 'Starting location set and ready for route optimization.'
+      : 'Starting location set. Google Maps will still use the address, but route optimization may need coordinates.';
+    status.style.color = 'rgba(11,18,32,.55)';
+  }
+}
 
 
 
@@ -1628,14 +1614,14 @@ async function applyStartLocationChange() {
 
     if (!clean) return true;
     if (clean.length < 3) return true;
-    if (clean.length > 80) return true;
+    if (clean.length > 160) return true;
 
     if (isRepeatedCharacterSpam(clean, 9)) return true;
 
     // Reject UI label text accidentally typed/pasted into the input.
     if (/^(route\s*start|start\s*location)\s*:/i.test(raw)) return true;
 
-    if (!/\s|\d|,/.test(clean) && clean.length > 24) return true;
+   // if (!/\s|\d|,/.test(clean) && clean.length > 24) return true;
 
     return false;
   }
@@ -5965,7 +5951,7 @@ function setupStartLocationAutocomplete() {
         status.textContent = 'No starting location set. Route starts from your first stop.';
         status.style.color = 'rgba(11,18,32,.55)';
       }
-    } else if (isLikelyInvalidStartLocation(value)) {
+    } else {
       if (status) {
         status.textContent = 'Enter a real starting location, like a hotel, airport, address, or known place.';
         status.style.color = '#b91c1c';
