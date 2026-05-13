@@ -2017,9 +2017,6 @@
 
             const fallbackPlannerUrl = buildPlannerUrlFromTrip(t);
 
-            console.log('Deleting trip:', t.id);
-            console.log('Fallback planner URL:', fallbackPlannerUrl);
-
             localStorage.setItem('tragent_account_return_url', fallbackPlannerUrl);
 
             await withAccountLoading('Deleting trip…', async () => {

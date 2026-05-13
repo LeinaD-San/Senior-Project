@@ -773,6 +773,67 @@
       border:1px solid var(--border);
       color:rgba(11,18,32,.82);
     }
+
+    .noteBox{
+      margin-top:10px;
+      padding:10px;
+      border:1px solid rgba(11,18,32,.10);
+      border-radius:14px;
+      background:rgba(11,18,32,.025);
+    }
+
+    .noteTopRow{
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      gap:8px;
+      margin-bottom:6px;
+    }
+
+    .noteLabel{
+      font-size:11px;
+      font-weight:900;
+      color:rgba(11,18,32,.55);
+      text-transform:uppercase;
+      letter-spacing:.04em;
+    }
+
+    .noteHint{
+      font-size:10px;
+      color:rgba(11,18,32,.42);
+      white-space:nowrap;
+    }
+
+    .note-input{
+      width:100%;
+      min-height:44px;
+      padding:10px 11px;
+      border:1px solid rgba(11,18,32,.12);
+      border-radius:12px;
+      font-family:inherit;
+      font-size:13px;
+      line-height:1.4;
+      background:white;
+      color:var(--ink);
+      outline:none;
+      resize:vertical;
+    }
+
+    .note-input::placeholder{
+      color:rgba(11,18,32,.38);
+    }
+
+    .note-input:focus{
+      border-color:rgba(255,106,0,.55);
+      box-shadow:0 0 0 3px rgba(255,106,0,.10);
+    }
+
+    .noteCounter{
+      margin-top:5px;
+      text-align:right;
+      font-size:10px;
+      color:rgba(11,18,32,.45);
+    }
   </style>
 </head>
 
@@ -939,7 +1000,11 @@
           </div>
 
           <div id="selectedCategoryPills" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;"></div>
-          <div id="qCounter" style="display:none" aria-live="polite"></div>
+          <div
+            id="qCounter"
+            style="margin-top:6px;font-size:12px;color:rgba(11,18,32,.55);"
+            aria-live="polite"
+          ></div>
 
 
         </div>
@@ -1262,10 +1327,6 @@
     }
 
     async function optimizeCurrentDayRoute() {
-      console.log('Optimize clicked');
-      console.log('Active day:', tripState.activeDay);
-      console.log('Items:', tripState.itemsByDay[tripState.activeDay]);
-
       const day = tripState.activeDay;
       const items = tripState.itemsByDay[day] || [];
 
@@ -1436,40 +1497,149 @@
       }
     }
 
-    async function applyStartLocationChange() {
-      const input = document.getElementById('startLocationInput');
-      const status = document.getElementById('startLocationStatus');
+async function applyStartLocationChange() {
+  const input = document.getElementById('startLocationInput');
+  const status = document.getElementById('startLocationStatus');
 
-      const value = (input?.value || '').trim().slice(0, 160);
+  const value = (input?.value || '').trim().slice(0, 160);
 
-      if (!value) {
-        tripState.startLocation = '';
-        tripState.startLat = null;
-        tripState.startLng = null;
+  if (!value) {
+    tripState.startLocation = '';
+    tripState.startLat = null;
+    tripState.startLng = null;
 
-        if (input) input.value = '';
-        if (status) status.textContent = 'No starting location set. Route starts from your first stop.';
-        return;
-      }
+    if (input) input.value = '';
 
-      if (status) status.textContent = 'Checking starting location…';
-
-      const geo = await geocodeStartLocation(value);
-
-      tripState.startLocation = geo?.formatted_address || value;
-      tripState.startLat = Number.isFinite(Number(geo?.lat)) ? Number(geo.lat) : null;
-      tripState.startLng = Number.isFinite(Number(geo?.lng)) ? Number(geo.lng) : null;
-
-      if (input) input.value = tripState.startLocation;
-
-      if (status) {
-        status.textContent = hasStartCoordinates()
-          ? 'Starting location set and ready for route optimization.'
-          : 'Starting location set. Google Maps will use it, but optimization may ignore it if coordinates are unavailable.';
-      }
+    if (status) {
+      status.textContent = 'No starting location set. Route starts from your first stop.';
+      status.style.color = 'rgba(11,18,32,.55)';
     }
 
+    return;
+  }
+  if (isLikelyInvalidStartLocation(value)) {
+    tripState.startLocation = '';
+    tripState.startLat = null;
+    tripState.startLng = null;
 
+    if (status) {
+      status.textContent = 'Enter a real starting location, like a hotel, airport, address, or known place.';
+      status.style.color = '#b91c1c';
+    }
+
+    return;
+  }
+
+    if (status) {
+      status.textContent = 'Checking starting location…';
+      status.style.color = 'rgba(11,18,32,.55)';
+    }
+
+    const geo = await geocodeStartLocation(value);
+
+    const hasCoordinates =
+      Number.isFinite(Number(geo?.lat)) &&
+      Number.isFinite(Number(geo?.lng));
+
+    if (!geo || !hasCoordinates) {
+      tripState.startLocation = '';
+      tripState.startLat = null;
+      tripState.startLng = null;
+
+      if (status) {
+        status.textContent = 'Could not verify that starting location. Try a hotel, airport, address, or known place.';
+        status.style.color = '#b91c1c';
+      }
+
+      return;
+    }
+
+    tripState.startLocation = geo.formatted_address || geo.label || value;
+    tripState.startLat = Number(geo.lat);
+    tripState.startLng = Number(geo.lng);
+
+    if (input) input.value = tripState.startLocation;
+
+    if (status) {
+      status.textContent = 'Starting location set and ready for route optimization.';
+      status.style.color = 'rgba(11,18,32,.55)';
+    }
+  }
+
+
+
+
+  function normalizeValidationText(value) {
+    return String(value || '')
+      .trim()
+      .replace(/^(route\s*start|start\s*location|current\s*destination|destination|search)\s*:\s*/i, '')
+      .trim();
+  }
+
+  function isRepeatedCharacterSpam(value, minRepeat = 9) {
+    const compact = String(value || '').trim().replace(/\s+/g, '');
+    if (!compact) return false;
+
+    const pattern = new RegExp(`^(.)\\1{${minRepeat - 1},}$`, 'i');
+    return pattern.test(compact);
+  }
+
+  function isLikelyInvalidStartLocation(value) {
+    const raw = String(value || '').trim();
+    const clean = normalizeValidationText(raw);
+
+    if (!clean) return true;
+    if (clean.length < 3) return true;
+    if (clean.length > 80) return true;
+
+    if (isRepeatedCharacterSpam(clean, 9)) return true;
+
+    // Reject UI label text accidentally typed/pasted into the input.
+    if (/^(route\s*start|start\s*location)\s*:/i.test(raw)) return true;
+
+    if (!/\s|\d|,/.test(clean) && clean.length > 24) return true;
+
+    return false;
+  }
+
+  function isLikelyInvalidDestination(value) {
+    const raw = String(value || '').trim();
+    const clean = normalizeValidationText(raw);
+
+    if (!clean) return true;
+    if (clean.length < 2) return true;
+    if (clean.length > 80) return true;
+
+    if (isRepeatedCharacterSpam(clean, 9)) return true;
+
+    // Prevent labels like "Route start:" from being accepted as destinations.
+    if (/^(route\s*start|start\s*location|search)\s*:/i.test(raw)) return true;
+
+    if (!/\s|,/.test(clean) && clean.length > 24) return true;
+
+    return false;
+  }
+
+  function isLikelyInvalidSearchQuery(value) {
+    const raw = String(value || '').trim();
+    const clean = normalizeValidationText(raw);
+
+    if (!clean) return false;
+    if (clean.length > 80) return true;
+
+    if (isRepeatedCharacterSpam(clean, 9)) return true;
+
+    if (/^(route\s*start|start\s*location|destination|current\s*destination)\s*:/i.test(raw)) {
+      return true;
+    }
+
+    if (!/\s|\d|,/.test(clean) && clean.length > 30) return true;
+
+    return false;
+  }
+
+
+  
     function clearStartLocation() {
       const input = document.getElementById('startLocationInput');
       const status = document.getElementById('startLocationStatus');
@@ -1482,6 +1652,7 @@
 
       if (status) {
         status.textContent = 'Starting location removed. Route starts from your first stop.';
+        status.style.color = 'rgba(11,18,32,.55)';
       }
     }
 
@@ -2863,33 +3034,44 @@
 
     //update destination 
     async function applyDestinationChange() {
-    const destinationEl = document.getElementById('destinationInput');
-    const nextDestination = (destinationEl.value || '').trim().slice(0, 120);
-    destinationEl.value = nextDestination;
+      const destinationEl = document.getElementById('destinationInput');
+      const nextDestination = (destinationEl.value || '').trim().slice(0, 120);
+      destinationEl.value = nextDestination;
 
-    if (!nextDestination) {
-      uiNotify('Missing destination', 'Enter a destination first.');
-      return;
-    }
+      if (!nextDestination) {
+        uiNotify('Missing destination', 'Enter a destination first.');
+        return;
+      }
 
-    const predictions = await fetchAutocomplete(nextDestination, {types: '(cities)'});
-    if(!predictions.length){
-      uiNotify(
-        'Invalid destination',
-        `"${nextDestination}" doesn't look like a real city. Try selecting one from the suggstions. `
-      );
-    }
 
-    tripState.destination = nextDestination;
-    setTripTitle(`Trip to ${nextDestination}`);
+      if (isLikelyInvalidDestination(nextDestination)) {
+        setInlineStatus(
+          'destinationCounter',
+          'Enter a destination first.',
+          true
+        );
+        return;
+      }
 
-    const url = new URL(window.location.href);
-    url.searchParams.set('dest', nextDestination);
-    window.history.replaceState({}, '', url.toString());
+      const predictions = await fetchAutocomplete(nextDestination, {types: '(cities)'});
+      
+      if(!predictions.length){
+        uiNotify(
+          'Invalid destination',
+          `"${nextDestination}" doesn't look like a real city. Try selecting one from the suggstions. `
+        );
+      }
 
-    renderPlannerProfileSummary();
-    await runSearch();
-    }
+      tripState.destination = nextDestination;
+      setTripTitle(`Trip to ${nextDestination}`);
+
+      const url = new URL(window.location.href);
+      url.searchParams.set('dest', nextDestination);
+      window.history.replaceState({}, '', url.toString());
+
+      renderPlannerProfileSummary();
+      await runSearch();
+      }
   
     // auth helpers
     function getToken() {
@@ -3341,10 +3523,23 @@
               </label>
             </div>
 
-            <textarea data-action="notes" data-id="${p.id || ''}" placeholder="Notes" style="width:100%;margin-top:6px;padding:8px 10px;border-radius:12px;border:1px solid var(--border);font-size:13px;" rows="1" maxlength="1000">${escapeHtml(p.notes || '')}</textarea>
-            <div data-action="notes-left" style="margin-top:6px;font-size:12px;color:rgba(11,18,32,.55);" aria-live="polite"></div>
+            <div class="noteBox">
+              <div class="noteTopRow">
+                <div class="noteLabel">Notes</div>
+                <div class="noteHint" data-action="notes-left" aria-live="polite"></div>
+              </div>
+
+              <textarea
+                data-action="notes"
+                class="note-input"
+                rows="2"
+                placeholder="Add a reminder, reservation note, or anything to remember…"
+                maxlength="300"
+              >${escapeHtml(p.notes || '')}</textarea>
+
           </div>
         </div>
+
         <div class="itemActions">
           <button class="iconBtn" title="Move up" onclick="moveItem(${tripState.activeDay}, ${idx}, -1)"><svg viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button>
 
@@ -3397,21 +3592,37 @@
       }
 
         const notesEl = div.querySelector('textarea[data-action="notes"]');
-        if (notesEl) {
-          bindCharLeftCounter(notesEl, div.querySelector('[data-action="notes-left"]'));
-          notesEl.addEventListener('blur', async (e) => {
-            const value = (e.target.value || '').slice(0, 1000);
-            e.target.value = value;
-            p.notes = value;
-            if (persistEnabled() && p.id) {
-              await fetch(`/trips/${tripState.currentTripId}/items/${p.id}` , {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
-                body: JSON.stringify({ notes: value }),
-              }).catch(() => {});
-            }
-          });
-        }
+
+          if (notesEl) {
+            const notesCounter = div.querySelector('[data-action="notes-left"]');
+
+            bindCharLeftCounter(notesEl, notesCounter);
+
+            notesEl.addEventListener('input', () => {
+              bindCharLeftCounter(notesEl, notesCounter);
+            });
+
+            notesEl.addEventListener('blur', async (e) => {
+              const max = Number(e.target.getAttribute('maxlength')) || 300;
+              const value = (e.target.value || '').slice(0, max);
+
+              e.target.value = value;
+              p.notes = value;
+
+              bindCharLeftCounter(notesEl, notesCounter);
+
+              if (persistEnabled() && p.id) {
+                await fetch(`/trips/${tripState.currentTripId}/items/${p.id}` , {
+                  method: 'PATCH',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${getToken()}`,
+                  },
+                  body: JSON.stringify({ notes: value }),
+                }).catch(() => {});
+              }
+            });
+          }
 
         list.appendChild(div);
       });
@@ -3746,7 +3957,6 @@
           carouselHtml = `<div class="carousel" data-place-id="${escapeHtml(p.place_id)}"> No Photo available</div>`;
         }
 
-        console.log('PLACE PRICE DEBUG:', p.name, p.price_Level,p);
 
         card.innerHTML = `
           ${carouselHtml}
@@ -3994,12 +4204,26 @@
       
         const input = document.getElementById('q');
         const typedSearch = (input?.value || '').trim().slice(0, 120);
+
+        if (input) input.value = typedSearch;
+
+        if (isLikelyInvalidSearchQuery(q)) {
+          setInlineStatus(
+            'qCounter',
+            'Enter a real place or interest, like coffee, museums, tacos, parks, or shopping.',
+            true
+          );
+          return;
+        }
+
+        setInlineStatus('qCounter', '', false);
+
         const destination = (document.getElementById('destinationInput').value || '').trim().slice(0, 120);
 
         document.getElementById('destinationInput').value = destination;
 
         if (!destination) {
-          uiNotify('Missing destination', 'Enter a destination first.');
+          setInlineStatus('Missing destination', 'Enter a destination first.');
           return;
         }
 
@@ -4211,7 +4435,6 @@
       let protectedDays = new Set();
       try {
         await withAiLoading('Generating itinerary…', async () => {
-          console.log('ABOUT TO CALL /ai/itinerary');
 
           const token = getToken();
           const headers = { 'Content-Type': 'application/json' };
@@ -4233,7 +4456,6 @@
           });
 
           const data = await res.json().catch(() => ({}));
-          console.log('AI STATUS:', res.status, data);
 
           if (!res.ok) {
             throw new Error(data.detail || 'AI itinerary request failed');
@@ -4832,6 +5054,19 @@ function setupDestinationAutocomplete() {
     clearTimeout(destinationSuggestTimer);
     const value = input.value.trim().slice(0, 120);
 
+    if (isLikelyInvalidSearchQuery(value)) {
+      setInlineStatus(
+        'qCounter',
+        'Enter a real place or interest, like coffee, museums, tacos, parks, or shopping.',
+        true
+      );
+      hideSuggestionList(list);
+      clearSuggestionHighlight(list);
+      return;
+    }
+
+    setInlineStatus('qCounter', '', false);
+
     if (value.length < 2) {
       hideSuggestionList(list);
       return;
@@ -4881,8 +5116,8 @@ function setupDestinationAutocomplete() {
     }
 
     function setupCharLeftCounters() {
-      bindCharLeftCounter(document.getElementById('q'), document.getElementById('qCounter'));
-      bindCharLeftCounter(document.getElementById('destinationInput'), document.getElementById('destinationCounter'));
+      //indCharLeftCounter(document.getElementById('q'), document.getElementById('qCounter'));
+      //bindCharLeftCounter(document.getElementById('destinationInput'), document.getElementById('destinationCounter'));
 
     }
 
@@ -5045,6 +5280,15 @@ function setupDestinationAutocomplete() {
       if (!cleanDest) return cleanTerm;
 
       return `${cleanTerm} in ${cleanDest}`;
+    }
+
+
+    function setInlineStatus(elementId, message = '', isError = false) {
+      const el = document.getElementById(elementId);
+      if (!el) return;
+
+      el.textContent = message;
+      el.style.color = isError ? '#b91c1c' : 'rgba(11,18,32,.55)';
     }
 
 const CATEGORY_SUGGESTIONS = [
@@ -5323,7 +5567,7 @@ function setupCategoryAutoComplete() {
   input.addEventListener('input', () => {
     const value = input.value.trim().slice(0, 120);
 
-    if (value.length < 4) {
+    if (value.length < 4 || isLikelyInvalidSearchQuery(value)) {
       hideSuggestionList(list);
       clearSuggestionHighlight(list);
       return;
@@ -5363,6 +5607,15 @@ function setupCategoryAutoComplete() {
 
     const value = input.value.trim().slice(0, 120);
     if (!value) return;
+
+    if (isLikelyInvalidSearchQuery(value)) {
+      setInlineStatus(
+        'qCounter',
+        'Enter a real place or interest, like coffee, museums, tacos, parks, or shopping.',
+        true
+      );
+      return;
+    }
 
     runSearch();
   });
@@ -5566,13 +5819,32 @@ function setupStartLocationAutocomplete() {
     clearTimeout(startLocationSuggestTimer);
 
     const value = input.value.trim().slice(0, 160);
+
+    const status = document.getElementById('startLocationStatus');
+
+    tripState.startLocation = '';
+    tripState.startLat = null;
+    tripState.startLng = null;
+
+    if (!value) {
+      if (status) {
+        status.textContent = 'No starting location set. Route starts from your first stop.';
+        status.style.color = 'rgba(11,18,32,.55)';
+      }
+    } else if (isLikelyInvalidStartLocation(value)) {
+      if (status) {
+        status.textContent = 'Enter a real starting location, like a hotel, airport, address, or known place.';
+        status.style.color = '#b91c1c';
+      }
+    }
+
     const destination = (
       document.getElementById('destinationInput')?.value ||
       tripState.destination ||
       ''
     ).trim();
 
-    if (value.length < 4 || !destination) {
+    if (value.length < 4 || !destination || isLikelyInvalidStartLocation(value)) {
       hideSuggestionList(list);
       clearSuggestionHighlight(list);
       return;
@@ -5806,10 +6078,9 @@ if (tripIdParam){
     });
   }
 }
-
+    
 
 const autogenParam = params.get('autogen');
-console.log("AUTOGEN PARAM:", autogenParam);
 if (autogenParam == '1') {
   setTimeout(() => {
     runAiGenerate();
