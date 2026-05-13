@@ -4008,6 +4008,35 @@ async function applyStartLocationChange() {
       root.appendChild(pager);
     }
 
+    function getPlaceCategoryLabel(place) {
+      const types = Array.isArray(place?.types) ? place.types.map((t) => String(t).toLowerCase()) : [];
+      const name = String(place?.name || '').toLowerCase();
+      const blob = types.join(' ') + ' ' + name;
+
+      const rules = [
+        { label: 'Coffee', match: ['cafe', 'coffee'] },
+        { label: 'Bakery', match: ['bakery'] },
+        { label: 'Bar', match: ['bar', 'night_club', 'pub', 'brewery'] },
+        { label: 'Restaurant', match: ['restaurant', 'meal_takeaway', 'meal_delivery', 'food'] },
+        { label: 'Park', match: ['park', 'campground'] },
+        { label: 'Museum', match: ['museum', 'art_gallery'] },
+        { label: 'Shopping', match: ['shopping_mall', 'store', 'clothing_store', 'book_store', 'department_store'] },
+        { label: 'Landmark', match: ['tourist_attraction', 'point_of_interest', 'landmark', 'historic'] },
+        { label: 'Lodging', match: ['lodging', 'hotel'] },
+        { label: 'Entertainment', match: ['movie_theater', 'amusement_park', 'aquarium', 'zoo', 'stadium', 'bowling_alley'] },
+      ];
+
+      for (const rule of rules) {
+        if (rule.match.some((m) => blob.includes(m))) return rule.label;
+      }
+
+      const primary = types.find((t) => t && t !== 'point_of_interest' && t !== 'establishment');
+      if (primary) {
+        return primary.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+      }
+      return 'Place';
+    }
+
     function renderResultsPage() {
       const root = document.getElementById('results');
       root.innerHTML = '';
@@ -4051,7 +4080,7 @@ async function applyStartLocationChange() {
             <div class="cardAddr">${escapeHtml(p.address || '')}</div>
             <div class="cardRow">
               ${p.rating ? `<span class="pill"><span class="starIcon"></span>${escapeHtml(String(p.rating))}</span>` : ``}
-              ${formatPriceEstimate(p.price_estimate) ? `<span class="pill">Price ${escapeHtml(formatPriceEstimate(p.price_estimate))}</span>` : ``}              <span class ="pill">Day ${tripState.activeDay}</span>
+              ${formatPriceEstimate(p.price_estimate) ? `<span class="pill">Price ${escapeHtml(formatPriceEstimate(p.price_estimate))}</span>` : ``}              <span class ="pill">${escapeHtml(getPlaceCategoryLabel(p))}</span>
               <button class="addBtn" ${added ? 'disabled' : ''} data-place-id="${escapeHtml(p.place_id)}">
                 ${added ? '<span class="checkIcon"></span>Added' : 'Add to Trip'}
               </button>
