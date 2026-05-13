@@ -465,14 +465,7 @@
       <div class="card">
         <div class="title">Saved Trips</div>
         <div class="sub">Open a trip to keep planning, or delete old ones.</div>
-        <div id="continueWrap" class="hidden" style="margin-top:12px; margin-bottom:12px; border:1px solid var(--border); background:white; border-radius:14px; padding:12px;">
-          <div class="title" id="continueTitle">Continue</div>
-          <div class="sub">Jump back into your most recent trip.</div>
-          <div style="margin-top:10px;display:flex;gap:10px">
-            <button class="primary" type="button" style="width:auto" onclick="continueLastTrip()">Continue last trip</button>
-            <button class="secondary" type="button" style="width:auto" onclick="forgetLastTrip()">Forget</button>
-          </div>
-        </div>
+
         <div class="list" id="tripsList"></div>
       </div>
     </div>
@@ -876,7 +869,10 @@
 
     function updateContinueUi() {
       const wrap = document.getElementById('continueWrap');
+
+      if (!wrap) return;
       const id = getLastTripId();
+      
       if (!id) wrap.classList.add('hidden');
       else wrap.classList.remove('hidden');
 
