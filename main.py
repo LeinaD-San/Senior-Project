@@ -1201,6 +1201,7 @@ async def places_search(
             "distance_miles": round(distance_meters / 1609.344, 2) if distance_meters is not None else None,
             "photo_url": photo_urls[0] if raw_photos else None,
             "photos": photo_urls,
+            "types": p.get("types", []),
         })
 
     return {"query": q, "count": len(results), "results": results}
@@ -1653,6 +1654,7 @@ async def search_places_for_interests(
             'price_level':p.get('price_level'),
             "lat": location.get("lat"),
             "lng": location.get("lng"),
+            "types": p.get("types", []),
         })
     return results
 
