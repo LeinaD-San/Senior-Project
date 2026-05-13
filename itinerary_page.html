@@ -828,6 +828,13 @@
   <!-- javascript -->
   <script>
     // backend url
+
+    // ======================================================
+    // Global App Configuration and Landing Page Constants
+    // ======================================================
+    // API_BASE is only used by older prototype helpers in this file. The current
+    // home page mainly redirects users into planner.html using relative routes.
+
     const API_BASE = 'http://localhost:8000';
 
     const ROTATING_WORDS = [
@@ -861,6 +868,10 @@
 
     const selectedInterests = new Set();
 
+    // ======================================================
+    // Landing Page Keyboard and Animation Helpers
+    // ======================================================
+    // Enables Enter-key shortcuts and rotates the hero word on the home page.
     function initEnterShortcuts() {
       const landingSearch = document.getElementById('landing-search');
       if (landingSearch) {
@@ -932,6 +943,11 @@
     initEnterShortcuts();
 
     // Build interest chips
+
+    // ======================================================
+    // Interest Chip Setup
+    // ======================================================
+    // Builds the selectable interest chips used before sending the user to the
     const chipGrid = document.getElementById('chip-grid');
     INTERESTS.forEach(i => {
       const el = document.createElement('div');
@@ -949,6 +965,12 @@
       chipGrid.appendChild(el);
     });
 
+
+    // ======================================================
+    // Older Local Itinerary Prototype Data
+    // ======================================================
+    // This mock data supported the early in-page itinerary prototype. The current
+    // production flow sends users to planner.html for real planning and saving.
     // fake data for testing (replace with real API later)
     const MOCK_PLACES = [
       { place_id: '1', name: 'Sunrise Cafe',     address: '123 Main St, Brownsville, TX',     rating: 4.5 },
@@ -988,6 +1010,11 @@
     // shows one screen, hides the rest
     const screens = ['landing', 'plan', 'loading', 'results', 'itinerary'];
 
+    // ======================================================
+    // Screen Navigation and Character Counter Helpers
+    // ======================================================
+    // Shows/hides the landing, plan, loading, results, and prototype itinerary
+    // screens. Character counters keep text inputs within their max lengths.
     function showScreen(name) {
       screens.forEach(s => {
         document.getElementById('screen-' + s).classList.toggle('hidden', s !== name);
@@ -1045,7 +1072,14 @@
       openPersonalizationModal();//commented out so user does not get sent to plan
     }*/
     
-   
+
+
+   // ======================================================
+    // Landing Destination Search Flow
+    // ======================================================
+    // Moves the destination from the home search bar into the planning form and
+    // opens the personalization modal after basic validation.
+
    function handleSearch(e) {
       if (e) e.preventDefault();
 
@@ -1068,6 +1102,11 @@
       openPersonalizationModal();
     }
 
+    // ======================================================
+    // Personalization Profile Helpers
+    // ======================================================
+    // Stores travel style choices such as group type, pace, budget, place style,
+    // and food focus before redirecting into planner.html.
     function renderPersonalizationSummary() {
       const el = document.getElementById('personalizationSummary');
       if (!el) return;
@@ -1084,7 +1123,11 @@
       
 
 
-
+    // ======================================================
+    // Older Prototype Search and Itinerary Helpers
+    // ======================================================
+    // These functions supported the earlier local-results prototype. The active
+    // flow now sends destination/interests/profile into planner.html.
     function mapInterestToQuery(interestId) {
       const map = {
         food: 'restaurants',
@@ -1405,6 +1448,10 @@
       return res.json();
     }
 
+    // ======================================================
+    // Authentication UI Helpers
+    // ======================================================
+    // Updates Sign in / My account / Log out links on the home page.
     function getToken() {
       return localStorage.getItem('tragent_token');
     }
@@ -1433,6 +1480,12 @@
     }
     let landingSuggestTimer = null;
 
+
+    // ======================================================
+    // Landing and Plan Autocomplete Helpers
+    // ======================================================
+    // Adds Google Places city autocomplete to both the landing search field and
+    // the plan destination field.
     function setupLandingAutocomplete() {
       const input = document.getElementById('landing-search');
       const list = document.getElementById('landingSuggestions');
@@ -1536,6 +1589,11 @@
         setSignedInUi(false);
       }
     })();
+    // ======================================================
+    // Shared Autocomplete Dropdown Helpers
+    // ======================================================
+    // Fetches city suggestions, renders dropdown rows, handles keyboard movement,
+    // and cleans city labels before inserting them into the input.
 
     async function fetchAutocomplete(input, opts = {}) {
       const params = new URLSearchParams();
@@ -1674,6 +1732,11 @@
 
     
 
+    // ======================================================
+    // Personalization Modal and Planner Redirect Functions
+    // ======================================================
+    // Validates the destination, collects profile choices, and builds the planner
+    // URL for either normal search or AI auto-generation.
 
     async function openPersonalizationModal(){
       const modal = document.getElementById('personalizationModal');

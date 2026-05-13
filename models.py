@@ -4,21 +4,35 @@ from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, Text, Floa
 from database import Base
 
 
+# ======================================================
+# Shared Model Helper
+# ======================================================
+# Returns the current UTC time for created_at fields.
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
+# ======================================================
+# User Model
+# ======================================================
+# Stores account identity and password hash data. Trips and session tokens connect
+# back to users through user_id.
 class User(Base):
     __tablename__ = 'users'
 
     id = Column(Integer, primary_key=True, index=True)
-    name = Column(String(120), nullable=True)#currently true so that rows do not break on startup
+    name = Column(String(120), nullable=True)  # Nullable so older rows do not break on startup.
     email = Column(String, unique=True, nullable=False, index=True)
     password_salt = Column(String, nullable=False)
     password_hash = Column(String, nullable=False)
     created_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
 
 
+# ======================================================
+# Session Token Model
+# ======================================================
+# Stores login tokens so the frontend can authenticate requests with
+# Authorization: Bearer <token>.
 class SessionToken(Base):
     __tablename__ = 'session_tokens'
 
@@ -28,16 +42,24 @@ class SessionToken(Base):
     created_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
     expires_at = Column(DateTime(timezone=True), nullable=False)
 
+
+# ======================================================
+# Trip Model
+# ======================================================
+# Stores one saved trip. This is the trip-level data used by planner.html,
+# account.html, and the AI personalization flow.
 class Trip(Base):
     __tablename__ = 'trips'
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey('users.id'), nullable=True, index=True)
-    title= Column(String, nullable=False)
+    title = Column(String, nullable=False)
     destination = Column(String, nullable=False)
 
+    # General trip setup.
     days = Column(Integer, nullable=False, default=1)
 
+    # AI/profile settings saved with the trip so it can be reopened later.
     group_type = Column(String, nullable=False, default="solo")
     age_style = Column(String, nullable=False, default="adult")
     pace = Column(String, nullable=False, default="balanced")
@@ -45,10 +67,9 @@ class Trip(Base):
     place_style = Column(String, nullable=False, default="mix")
     food_focus = Column(Integer, nullable=False, default=1)
 
+    # Trip-wide notes/interests/date. TripItem.notes belongs to individual stops.
     start_date = Column(String, nullable=True)
     interests_json = Column(Text, nullable=True)
-    #Store general trip notes/reminders for the whole trip
-    #This would also be different from the TripItem.notes because this belongs to the whole trip
     notes = Column(Text, nullable=True)
 
     # Trip feedback for future AI personalization.
@@ -58,32 +79,36 @@ class Trip(Base):
     trip_changed_from_ai = Column(Integer, nullable=True)
     trip_feedback_notes = Column(Text, nullable=True)
 
+
+# ======================================================
+# Trip Item Model
+# ======================================================
+# Stores one stop/place inside a saved trip. Trip items belong to a Trip and are
+# grouped by day and ordered with position.
 class TripItem(Base):
     __tablename__ = 'trip_item'
 
     id = Column(Integer, primary_key=True, index=True)
-    trip_id = Column(Integer, ForeignKey('trips.id'), nullable =False)
+    trip_id = Column(Integer, ForeignKey('trips.id'), nullable=False)
 
-    day = Column(Integer, default = 1)
+    # Day and position control where the stop appears in the itinerary notepad.
+    day = Column(Integer, default=1)
+    position = Column(Integer, nullable=False, default=0)
 
-#this is the new position, this is implemented since there is no guaranteed order. 
-#therefore position will be the order police for items within the same trip and same day. 
-    position = Column(Integer, nullable=False, default =0) #added by Nick^^
-
+    # Google Places identity and display fields.
     place_id = Column(String, nullable=False)
     name = Column(String, nullable=False)
     notes = Column(Text, default='')
+    category = Column(String, nullable=True)
 
-
-    #stores what kind of shop this is. 
-    category = Column(String, nullable = True)
-
+    # Optional place metadata used for route optimization, details, and thumbnails.
     lat = Column(Float, nullable=True)
-    lng = Column(Float,nullable=True)
+    lng = Column(Float, nullable=True)
     address = Column(String, nullable=True)
     rating = Column(Float, nullable=True)
     photo_url = Column(Text, nullable=True)
 
+    # Optional planned time window for open-hours warnings.
     arrival_time = Column(String, nullable=True)
     departure_time = Column(String, nullable=True)
 

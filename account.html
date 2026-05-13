@@ -472,6 +472,11 @@
   </div>
 
   <script>
+    // ======================================================
+    // Account URL and Navigation Helpers
+    // ======================================================
+    // Reads account query parameters, remembers where the user came from, and
+    // builds planner URLs from saved trip data.
     function qs(key) {
       const url = new URL(window.location.href);
       return url.searchParams.get(key);
@@ -513,7 +518,11 @@
     let accountReturnURL = nextUrl();
     document.getElementById('backLink').href = accountReturnURL;
 
-
+    // ======================================================
+    // Account Loading Overlay Helpers
+    // ======================================================
+    // Shows a loading overlay for profile, saved-trip, delete, and feedback
+    // actions. The counter avoids hiding the overlay before all work finishes.
     let accountLoadingCount = 0;
 
     function setAccountLoadingVisible(visible, title) {
@@ -552,6 +561,13 @@
       }
     }
 
+
+    // ======================================================
+    // Authentication Helpers
+    // ======================================================
+    // Reads the saved login token, updates signed-in UI state, wraps authorized
+    // fetch requests, and logs the user out when needed
+
     function getToken() {
       return localStorage.getItem('tragent_token') || '';
     }
@@ -583,6 +599,13 @@
       }
       renderSignedOut();
     }
+
+
+    // ======================================================
+    // Shared Escaping and Modal Helpers
+    // ======================================================
+    // escapeHtml protects user-facing text before it is inserted as HTML.
+    // openAccountModal is reused for feedback, template actions, and edit dialogs.
 
     function escapeHtml(str) {
       return String(str)
@@ -647,7 +670,11 @@
 
 
 
-
+    // ======================================================
+    // Trip Feedback and Rating Functions
+    // ======================================================
+    // Handles rating a saved trip, locking feedback after submission, and showing
+    // saved feedback that the AI can use as a future personalization reference.
     let activeFeedbackTrip = null;
     let activeFeedbackRating = null;
     let activeFeedbackChanged = null;
@@ -847,6 +874,13 @@
       );
     }
 
+
+    // ======================================================
+    // Planner Navigation and Legacy Continue-Trip Helpers
+    // ======================================================
+    // goPlanner/goCreateTrip control account-to-planner navigation. The continue
+    // trip helpers are kept for safety even though the visible Continue card was
+    // removed from the acco
     function goPlanner() {
       window.location.href = accountReturnURL || nextUrl() || '/planner';
     }
@@ -872,7 +906,7 @@
 
       if (!wrap) return;
       const id = getLastTripId();
-      
+
       if (!id) wrap.classList.add('hidden');
       else wrap.classList.remove('hidden');
 
@@ -902,6 +936,12 @@
       }
     }
 
+
+    // ======================================================
+    // Template Destination and Template Storage Helpers
+    // ======================================================
+    // Manages the template destination input, built-in templates, custom templates,
+    // deleted built-ins, and the active template passed into planner.html.
     function clearTemplateDest() {
       const input = document.getElementById('templateDest');
       input.value = '';
@@ -1009,6 +1049,12 @@
       });
         }
 
+
+    // ======================================================
+    // Template Edit/Delete UI Functions
+    // ======================================================
+    // Opens the template action modal, lets the user edit template details, and
+    // saves custom edits without changing the original built-in templates directly.
     function openTemplateActions(templateId) {
       const tpl = getAllTemplates()[templateId];
       if (!tpl) return;
@@ -1228,6 +1274,12 @@
       }
     }
 
+
+    // ======================================================
+    // Template Description Suggestion Helpers
+    // ======================================================
+    // Provides quick preset phrases for custom templates, such as family-friendly,
+    // relaxed local day, date night, budget-friendly, or hidden gems.
     const TEMPLATE_DESC_SUGGESTIONS = [
       {
         main_text: 'Family-friendly',
@@ -1469,6 +1521,12 @@
 
     let templateSuggestTimer = null;
 
+
+    // ======================================================
+    // Autocomplete and Suggestion Dropdown Helpers
+    // ======================================================
+    // Shared dropdown functions used by template destination and template
+    // description suggestions, including keyboard navigation support.
     async function fetchAutocomplete(input, opts = {}) {
       const params = new URLSearchParams();
       params.set('input', input);
@@ -1623,6 +1681,11 @@
       });
     }
 
+    // ======================================================
+    // Profile and Saved Trip Rendering
+    // ======================================================
+    // Loads profile information, renders saved trips, shows rating state, and
+    // connects trip cards to open, rate/view rating, delete, and thumbnail actions.
     function renderSignedOut() {
       document.getElementById('profileSub').textContent = 'Sign in to see your profile.';
       document.getElementById('profilePills').innerHTML = '';
@@ -1709,6 +1772,12 @@
       return parts.join(' . ');
     }
 
+
+    // ======================================================
+    // Saved Trip Thumbnails and Place Details Helpers
+    // ======================================================
+    // Loads thumbnail photos for saved trip stops, opens saved-place details, and
+    // shows photo carousels/details from Google Places.
     const accountPhotoCache = {};
 
     function getTripItems(t) {
@@ -2057,6 +2126,11 @@
       );
     }
 
+    // ======================================================
+    // Account Page Initialization
+    // ======================================================
+    // Sets up auth state, templates, autocomplete, enter-key shortcuts, profile
+    // loading, and saved-trip loading when the page first opens.
 
     async function init() {
       const token = getToken();

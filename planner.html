@@ -1095,8 +1095,20 @@
   </div>
 
   <script>
+    // ======================================================
+    // Global App Configuration
+    // ======================================================
+    // The planner is served by the same FastAPI backend, so most fetch calls
+    // use relative routes such as /trips, /places/search, and /ai/itinerary.
     const API_BASE = '';
 
+
+    // ======================================================
+    // AI Loading Overlay Helpers
+    // ======================================================
+    // Shows a full-screen loading overlay during longer AI actions.
+    // aiLoadingCount prevents the overlay from closing too early when multiple
+    // async actions overlap.
     let aiLoadingCount = 0;
 
     function setAiOverlayVisible(visible) {
@@ -1138,6 +1150,12 @@
       }
     }
 
+
+    // ======================================================
+    // Navigation and Shared UI Modal Helpers
+    // ======================================================
+    // Handles navigation and reusable pop-up messages used for warnings,
+    // confirmations, route notices, save messages, and AI prompts.
     function goToAccount() {
       window.location.href = `/account?next=${encodeURIComponent(currentNextUrl())}`;
     }
@@ -1199,6 +1217,13 @@
       if (modal && modal.style.display === 'block') closeUiModal();
     });
 
+
+    // ======================================================
+    // Route Optimization and Google Maps Helpers
+    // ======================================================
+    // Estimates distances/travel time, reorders day stops using a nearest-neighbor
+    // approach, and builds Google Maps directions links for the active day.
+    // These functions also use the optional route start location when available.
     function haversineMiles(a, b) {
       const lat1 = Number(a?.lat);
       const lon1 = Number(a?.lng);
@@ -1497,6 +1522,13 @@
       }
     }
 
+
+    // ======================================================
+    // Start Location Functions
+    // ======================================================
+    // Lets the user set an optional hotel, airport, home address, or other route
+    // starting point. The location is geocoded so route optimization can begin
+    // from that starting point instead of the first itinerary stop.
 async function applyStartLocationChange() {
   const input = document.getElementById('startLocationInput');
   const status = document.getElementById('startLocationStatus');
@@ -1569,6 +1601,12 @@ async function applyStartLocationChange() {
 
 
 
+
+  // ======================================================
+  // Input Validation Helpers
+  // ======================================================
+  // Blocks junk input before the app makes unnecessary destination, search,
+  // autocomplete, or geocode requests.
   function normalizeValidationText(value) {
     return String(value || '')
       .trim()
@@ -1686,6 +1724,12 @@ async function applyStartLocationChange() {
       window.open(url, '_blank', 'noopener,noreferrer');
     }
 
+
+    // ======================================================
+    // AI Travel Chatbot UI Functions
+    // ======================================================
+    // Opens/closes the floating chatbot, appends chat bubbles, and builds the
+    // current trip context that gets sent to the backend AI chat endpoint.
     function openTravelChatbot() {
       const panel = document.getElementById('travelChatPanel');
       const input = document.getElementById('travelChatInput');
@@ -1760,6 +1804,13 @@ async function applyStartLocationChange() {
       };
     }
 
+
+      // ======================================================
+      // AI Chatbot Intent Detection
+      // ======================================================
+      // Reads the user's chat message and decides whether the chatbot should
+      // answer normally, suggest a missing stop type, add a stop, generate one
+      // day, or generate the full trip.
       function isTripSuggestionRequest(message) {
         const text = String(message || '').toLowerCase().replace(/\s+/g, ' ').trim();
 
@@ -2146,6 +2197,13 @@ async function applyStartLocationChange() {
     }
 
 
+
+    // ======================================================
+    // AI Chatbot Add-Stop Flow
+    // ======================================================
+    // Searches Google Places for a real recommendation, avoids duplicate stops,
+    // shows a richer preview modal, supports Try Another, and adds the chosen
+    // stop to the selected day.
     async function findChatRecommendedStop(category, attempt = 1) {
       const destination =
         (tripState.destination || document.getElementById('destinationInput')?.value || '').trim();
@@ -2608,6 +2666,13 @@ async function applyStartLocationChange() {
       return null;
     }
 
+
+    // ======================================================
+    // Trip Title and Display Helpers
+    // ======================================================
+    // Builds and updates the current trip title shown in the planner notepad.
+    // If the user does not rename the trip, a default title is created from the
+    // destination and selected interests.
     function getTripTitle() {
       return (tripState.title || '').trim().slice(0, 200);
     }
@@ -2743,6 +2808,12 @@ async function applyStartLocationChange() {
 
     const photoCache = {};
 
+
+    // ======================================================
+    // Place Photo Carousel and Details Modal Helpers
+    // ======================================================
+    // Loads photos/details for result cards and modal views. These helpers are
+    // connected to place cards, saved trip thumbnails, and the details modal.
     async function fetchPlacePhotos(placeId) {
       if (photoCache[placeId]) return photoCache[placeId];
       try {
@@ -3032,7 +3103,12 @@ async function applyStartLocationChange() {
     });
 
 
-    //update destination 
+    // ======================================================
+    // Destination Update Functions
+    // ======================================================
+    // Validates and applies the current destination, updates the browser URL,
+    // refreshes profile/search context, and reruns search so results match the
+    // new location.
     async function applyDestinationChange() {
       const destinationEl = document.getElementById('destinationInput');
       const nextDestination = (destinationEl.value || '').trim().slice(0, 120);
@@ -3073,7 +3149,12 @@ async function applyStartLocationChange() {
       await runSearch();
       }
   
-    // auth helpers
+    // ======================================================
+    // Authentication and Pending Trip Draft Helpers
+    // ======================================================
+    // Manages login state, attaches the saved token to backend requests, and
+    // temporarily stores an unsaved trip draft when the user needs to sign in
+    // before saving.
     function getToken() {
       return localStorage.getItem('tragent_token');
     }
@@ -3237,6 +3318,12 @@ async function applyStartLocationChange() {
       title: '',
     };
 
+
+    // ======================================================
+    // Trip Loading and Day Setup
+    // ======================================================
+    // Initializes planner days, loads saved trips from the backend, restores
+    // saved interests/profile settings, and prepares the notepad display.
     function resetDays(newDays) {
       tripState.days = newDays;
       const nextItems = {};
@@ -3366,6 +3453,12 @@ async function applyStartLocationChange() {
       }
     }
 
+
+    // ======================================================
+    // Itinerary Rendering Helpers
+    // ======================================================
+    // Renders day buttons, itinerary stop cards, note boxes, and result-card
+    // button states based on the current tripState.
     function renderDays() {
       document.querySelectorAll('.dayBtn').forEach((b, idx) => {
         b.classList.toggle('active', idx + 1 === tripState.activeDay);
@@ -3743,6 +3836,13 @@ async function applyStartLocationChange() {
       });
     }
 
+
+    // ======================================================
+    // Itinerary Item Actions
+    // ======================================================
+    // Adds, removes, replaces, moves, and clears stops. These functions update
+    // tripState first, rerender the UI, and sync to the backend when the trip
+    // already has a saved trip ID.
     async function removeFromTrip(placeId) {
       const dayItems = tripState.itemsByDay[tripState.activeDay];
       const item = dayItems.find((x) => x.place_id === placeId);
@@ -4406,6 +4506,13 @@ async function applyStartLocationChange() {
       });
     }
 
+
+    // ======================================================
+    // AI Itinerary Generation
+    // ======================================================
+    // Sends destination, days, selected interests, profile, start date, and
+    // optional template guidance to the backend AI route. The response is merged
+    // into tripState while protecting existing manual plans when needed.
     async function runAiGenerate() {
       const destination = (document.getElementById('destinationInput').value || tripState.destination || '').trim().slice(0, 120);
       document.getElementById('destinationInput').value = destination;
@@ -4501,6 +4608,13 @@ async function applyStartLocationChange() {
       }
     }
 
+
+    // ======================================================
+    // Place Details, Hours, and Closed-Time Warning Helpers
+    // ======================================================
+    // Loads/caches place details and warns when a selected arrival/departure time
+    // appears outside a place's open hours. This currently uses today's date until
+    // the app adds a true selected trip date flow.
     const placeDetailsCache = {};
 
     function hhmmToMinutesClient(value) {
@@ -4680,6 +4794,13 @@ async function applyStartLocationChange() {
       }
     }
 
+
+    // ======================================================
+    // Trip Saving and Backend Sync
+    // ======================================================
+    // Creates or updates trips in the backend, saves trip-level notes/profile,
+    // sends itinerary items, preserves stop order, and handles sign-in redirects
+    // when the user tries to save while logged out.
     async function saveTrip() {
       const warnings = await findClosedTimeWarnings();
 
@@ -4910,7 +5031,14 @@ async function saveTripConfirmed() {
   });
 }
 
-        function escapeHtml(str) {
+    
+    // ======================================================
+    // Shared Formatting, Autocomplete, and Search Helpers
+    // ======================================================
+    // Escapes user-facing text, handles autocomplete dropdowns, normalizes search
+    // terms, manages category pills, and filters place results near the selected
+    // destination.
+    function escapeHtml(str) {
           return String(str)
             .replaceAll('&', '&amp;')
             .replaceAll('<', '&lt;')
@@ -5804,6 +5932,12 @@ function isStartSuggestionNearDestination(item, destination) {
 
 let startLocationSuggestTimer = null;
 
+
+// ======================================================
+// Route Start Autocomplete Helpers
+// ======================================================
+// Ranks start-location suggestions so generic city results do not replace
+// more useful addresses, hotels, airports, or known places near the trip.
 function setupStartLocationAutocomplete() {
   const input = document.getElementById('startLocationInput');
   const list = document.getElementById('startLocationSuggestions');

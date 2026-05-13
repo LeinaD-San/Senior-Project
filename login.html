@@ -139,8 +139,17 @@
   </div>
 
   <script>
+    // ======================================================
+    // Login/Register Page State
+    // ======================================================
+    // mode controls whether the form is being used for login or account creation.
     let mode = 'login';
 
+
+    // ======================================================
+    // URL Navigation Helpers
+    // ======================================================
+    // Reads the next URL so users return to the planner/account page after login.
     function qs(key) {
       const url = new URL(window.location.href);
       return url.searchParams.get(key);
@@ -152,6 +161,12 @@
 
     document.getElementById('backLink').href = nextUrl();
 
+
+    // ======================================================
+    // Auth Form UI Helpers
+    // ======================================================
+    // Switches between login and register mode and shows the name field only
+    // when creating a new account.
     function setMode(nextMode) {
       mode = nextMode;
       document.getElementById('tabLogin').classList.toggle('active', mode === 'login');
@@ -163,6 +178,11 @@
       document.getElementById('name').style.display = showName ? 'block' : 'none';
     }
 
+    // ======================================================
+    // Authentication Request Helpers
+    // ======================================================
+    // Sends login/register requests to the backend, stores the session token,
+    // saves basic user data, and redirects back to the requested page.
     function setToken(token) {
       if (!token) localStorage.removeItem('tragent_token');
       else localStorage.setItem('tragent_token', token);
@@ -221,7 +241,10 @@
       window.location.href = nextUrl();
     }
 
-
+    // ======================================================
+    // Keyboard Shortcut Setup
+    // ======================================================
+    // Allows pressing Enter in any auth input to submit the form.
     function setupEnterToSubmitAuth() {
       ['name', 'email', 'password'].forEach((id) => {
         const el = document.getElementById(id);

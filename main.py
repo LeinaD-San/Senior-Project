@@ -38,6 +38,11 @@ from fastapi.staticfiles import StaticFiles
 
 import math
 
+# ======================================================
+# App Setup and Configuration
+# ======================================================
+# Loads environment variables, creates the FastAPI app, mounts static files,
+# and configures optional OpenAI support.
 BASE_DIR = Path(__file__).resolve().parent
 
 load_dotenv()
@@ -56,6 +61,11 @@ PLACES_SEARCH_CACHE_TTL_SECONDS = 60 * 60  # 1 hour
 PLACE_DETAILS_CACHE = {}
 PLACE_DETAILS_CACHE_TTL_SECONDS = 60 * 60 * 24  # 24 hours
 '''
+
+# ======================================================
+# Global Error Handlers and Static Page Routes
+# ======================================================
+# Handles database startup errors gracefully and serves the main HTML pages.
 @app.exception_handler(OperationalError)
 def sqlalchemy_operational_error_handler(request, exc):
     return JSONResponse(
@@ -86,6 +96,12 @@ def itinerary_page():
 def login_page():
     return FileResponse(BASE_DIR / "login.html", media_type="text/html")
 
+
+# ======================================================
+# CORS and Startup Database Migration
+# ======================================================
+# Allows the frontend to call the API and creates/updates database tables/columns
+# at startup so older local databases keep working during development.
 #so frontend can call API
 app.add_middleware(
     CORSMiddleware,
@@ -133,6 +149,11 @@ def on_startup():
     except OperationalError: 
         print("ABORT ABORT, MAKE SURE YOU START WITH THE: docker compose up -d : OR ELSE THERE WILL BE ISSUES")
 
+
+# ======================================================
+# Database Session Dependency
+# ======================================================
+# Provides a SQLAlchemy session to each request and closes it after the request.
 #DB dependency
 def get_db():
     db = SessionLocal()
@@ -143,7 +164,11 @@ def get_db():
 
 db_dependency = Annotated[Session, Depends(get_db)]
 
-#Schemas
+# ======================================================
+# Pydantic Request / Response Schemas
+# ======================================================
+# These classes define the shape and validation rules for data sent between
+# the frontend and backend.
 class TripCreate(BaseModel):
     title: str = Field(min_length=1, max_length=200)
     destination: str = Field(min_length=1, max_length=200)
@@ -295,6 +320,12 @@ class ReplaceStopRequest(BaseModel):
 
 
 
+
+# ======================================================
+# AI Structured Output Schema
+# ======================================================
+# Defines the JSON outline format expected from the AI when planning itinerary
+# search queries by day.
 AI_OUTLINE_SCHEMA = {
     "type": "object",
     "properties": {
@@ -323,6 +354,12 @@ AI_OUTLINE_SCHEMA = {
 }
 
 
+
+# ======================================================
+# Health and AI Configuration Test Routes
+# ======================================================
+# Small diagnostic routes used to confirm the backend and optional AI connection
+# are working.
 #app Health/activity
 @app.get("/health")
 def health():
@@ -342,6 +379,12 @@ def ai_test():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+
+# ======================================================
+# Authentication and General Backend Helpers
+# ======================================================
+# Password hashing, token parsing, interest JSON helpers, time validation, and
+# feedback summary building used by auth, trips, and AI personalization.
 def _hash_password(password: str, salt_b64: str) -> str:
     salt = base64.b64decode(salt_b64.encode("utf-8"))
     dk = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, 210_000)
@@ -507,6 +550,11 @@ def get_optional_current_user(
     return user
 
 
+
+# ======================================================
+# Authentication Routes
+# ======================================================
+# Handles account creation, login, logout, and the current-user /me endpoint.
 @app.post("/auth/register", response_model=SessionResponse)
 def auth_register(payload: RegisterPayload, db: db_dependency):
     existing = db.query(models.User).filter(models.User.email == payload.email.lower()).first()
@@ -585,7 +633,11 @@ def auth_logout(db: db_dependency, authorization: str | None = Header(default=No
 def me(user: models.User = Depends(get_current_user)):
     return {"id": user.id, "name": user.name, "email": user.email}
 
-#DB--Trips
+# ======================================================
+# Trip CRUD Routes
+# ======================================================
+# Creates, lists, updates, loads, deletes, and reorders trips and trip items.
+# These routes are used heavily by planner.html and account.html.
 @app.post("/trips")
 def create_trip(payload: TripCreate, db: db_dependency, user: models.User = Depends(get_current_user)):
     trip = models.Trip(
@@ -967,6 +1019,11 @@ def reorder_day_items(
         ],
     } 
 
+
+# ======================================================
+# Planner and Account Page Routes
+# ======================================================
+# Serves the planner and account HTML pages.
 #trip notepad
 @app.get("/planner")
 def planner_page():
@@ -980,6 +1037,12 @@ def account_page():
 
 
 
+
+# ======================================================
+# Date, Price, Distance, and Route Utility Helpers
+# ======================================================
+# Shared utility functions for place scoring, open-hours warnings, and route
+# calculations.
 def get_real_weekday_index(start_date_str: str | None, day_offset: int) -> int:
     if start_date_str:
         try:
@@ -1053,6 +1116,13 @@ def distance_meters_between(
     return radius_earth_meters * c
 
 
+
+# ======================================================
+# Google Places Search and Details Routes
+# ======================================================
+# Wraps Google Places, Autocomplete, Details, Nearby Search, and Geocoding so the
+# frontend can search, validate destinations, show photos/details, and geocode
+# route start locations.
 @app.get("/places/search")
 async def places_search(
     q: str = Query(min_length=1, max_length=120),
@@ -1423,6 +1493,11 @@ async def geo_forward(address: str = Query(min_length=1, max_length=200)):
         "lng": location.get("lng"),
     }
 
+
+# ======================================================
+# Interest Mapping and Place Search Query Helpers
+# ======================================================
+# Converts user interests/profile choices into Google Places search terms.
 #this is a helper that maps interests to search terms
 INTEREST_QUERY_MAP = {
     "food": "restaurants",
@@ -1581,6 +1656,12 @@ async def search_places_for_interests(
         })
     return results
 
+
+# ======================================================
+# Place Deduplication, Scoring, and Ranking Helpers
+# ======================================================
+# Removes duplicates and ranks places using rating, price, category, profile, age
+# style, and saved user feedback.
 def dedupe_places(places: List[dict]) -> List[dict]:
     seen = set()
     deduped = []
@@ -1839,6 +1920,12 @@ def randomize_ranked_place_pool(
 
 
 
+
+# ======================================================
+# AI Replacement Stop Route
+# ======================================================
+# Finds a new stop in the same category while avoiding places already used in the
+# itinerary.
 @app.post("/ai/replace-stop")
 async def ai_replace_stop(body: ReplaceStopRequest):
     profile = body.profile or TripProfile()
@@ -2042,6 +2129,12 @@ def score_place(place: dict, interest: str, profile: Optional[TripProfile]) -> f
     return score
 
 
+
+# ======================================================
+# AI Itinerary Timing and Day-Balancing Helpers
+# ======================================================
+# Estimates visit length, builds daily time slots, checks opening hours, and
+# distributes places into realistic day plans.
 def estimate_visit_minutes(place: dict, interest: str | None = None) -> int:
     name = (place.get("name") or "").lower()
     address = (place.get("address") or "").lower()
@@ -2647,6 +2740,12 @@ async def fetch_google_drive_route(
         "duration_text": duration_text,
     }
 
+
+# ======================================================
+# AI Itinerary Generation Route
+# ======================================================
+# Generates route-aware itinerary days using destination, interests, profile,
+# template guidance, Google Places candidates, scoring, and opening-hours logic.
 @app.post("/ai/itinerary", response_model=AIItineraryResponse)
 async def ai_itinerary(
     body: ItineraryRequest,
@@ -2806,6 +2905,13 @@ async def ai_itinerary(
     }
 
 
+
+# ======================================================
+# AI Travel Chatbot Route
+# ======================================================
+# Responds only to trip-planning questions using the current planner context.
+# The frontend handles action-style chat requests like adding stops or generating
+# days, while this route gives scoped travel guidance.
 @app.post("/ai/travel-chat")
 async def ai_travel_chat(payload: TravelChatRequest):
     message = (payload.message or "").strip()
@@ -2946,6 +3052,12 @@ User question:
             detail="AI trip assistant failed to respond."
         )
 
+
+# ======================================================
+# Time Parsing Helpers
+# ======================================================
+# Converts HH:MM strings and human-readable place hours into minutes so the app
+# can compare selected stop times against place opening hours.
 def hhmm_to_minutes(hhmm:str) -> int:
     h,m = hhmm.split(":")
     return int(h) * 60 + int(m)
@@ -3017,5 +3129,3 @@ def is_place_open_for_time(place: dict, day_index: int, arrival_hhmm: str, depar
                 return True
 
     return False
-        
-
