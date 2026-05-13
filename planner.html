@@ -2281,6 +2281,7 @@ async function applyStartLocationChange() {
         text.includes('more relaxed') ||
         text.includes('less packed') ||
         text.includes('replace day')
+
       );
     }
 
@@ -2456,7 +2457,9 @@ async function applyStartLocationChange() {
         text.includes('add stop') ||
         text.includes('add something') ||
         text.includes('add a place') ||
-        text.includes('add place')
+        text.includes('add place') ||
+        text.includes('ok something is missing can you add another stop to ')
+
       ) {
         return 'food';
       }
